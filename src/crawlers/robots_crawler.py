@@ -51,12 +51,13 @@ class RobotsCrawler:
         try:
             # Chunk başında VPN bağlantısını kontrol et
             if worker_id == 0:  # İlk worker VPN'i başlatsın
-                logger.info("VPN bağlantısı kuruluyor ve test ediliyor...")
-                vpn_success = await self.vpn_manager.connect_initial_vpn()
-                if not vpn_success:
-                    logger.error("VPN bağlantısı başarısız! İşlem durduruluyor.")
-                    return domains_found
-                logger.info("VPN bağlantısı başarılı, işlem başlıyor...")
+                logger.info("VPN devre dışı, doğrudan işlem başlıyor...")
+                # VPN bağlantısını atla
+                # vpn_success = await self.vpn_manager.connect_initial_vpn()
+                # if not vpn_success:
+                #     logger.error("VPN bağlantısı başarısız! İşlem durduruluyor.")
+                #     return domains_found
+                # logger.info("VPN bağlantısı başarılı, işlem başlıyor...")
             
             logger.info(f"Worker {worker_id}: {len(chunk)} dosya işlenecek")
             

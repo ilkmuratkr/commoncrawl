@@ -38,8 +38,8 @@ WORDPRESS_PATTERNS = [
 
 # VPN ayarları
 VPN_CONFIG_DIR = "mullvad_wireguard_macos_all_all"
-VPN_ROTATION_ON_403 = True  # 403 hatası alınca VPN değiştir
-VPN_CONNECTION_TIMEOUT = 15  # VPN bağlantı timeout'u (30'dan 15'e düşürdüm)
+VPN_ROTATION_ON_403 = False  # VPN'yi geçici olarak devre dışı bıraktım
+VPN_CONNECTION_TIMEOUT = 15  # VPN bağlantı timeout'u
 
 # Dizinleri oluştur
 for directory in [DATA_DIR, RAW_DIR, PROCESSED_DIR, RESULTS_DIR]:

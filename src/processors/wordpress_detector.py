@@ -28,11 +28,10 @@ class WordPressDetector:
                         from urllib.parse import urlparse
                         parsed = urlparse(uri)
                         current_domain = parsed.netloc
-                        logger.debug(f"Domain bulundu: {current_domain}")
                 
                 # Content-Type kontrolü
                 elif line.startswith('Content-Type:') and 'text/plain' in line:
-                    logger.debug("Content-Type text/plain doğrulandı")
+                    pass
                 
                 # WordPress pattern kontrolü
                 elif current_domain and any(pattern in line for pattern in WORDPRESS_PATTERNS):
@@ -40,11 +39,6 @@ class WordPressDetector:
                     logger.info(f"WordPress pattern bulundu: {current_domain} - {line[:50]}...")
                     break  # Bir pattern bulunduysa yeterli
             
-            if domains:
-                logger.debug(f"Toplam {len(domains)} domain bulundu")
-            else:
-                logger.debug("WordPress pattern bulunamadı")
-                
         except Exception as e:
             logger.error(f"Domain çıkarma hatası: {e}")
         
@@ -54,16 +48,13 @@ class WordPressDetector:
         """İçerikte WordPress belirteci var mı kontrol et"""
         for pattern in WORDPRESS_PATTERNS:
             if pattern in content:
-                logger.debug(f"WordPress pattern bulundu: {pattern}")
                 return True
         return False
     
     def process_robots_file(self, path: str, content: str) -> List[str]:
         """Robots.txt dosyasını işle ve WordPress domain'lerini bul"""
-        logger.debug(f"İşleniyor: {path}")
         
         if not content:
-            logger.debug(f"Boş içerik: {path}")
             return []
         
         # WordPress kontrolü
@@ -73,7 +64,6 @@ class WordPressDetector:
                 logger.info(f"WordPress domain bulundu: {domains[0]} ({path})")
             return domains
         else:
-            logger.debug(f"WordPress pattern bulunamadı: {path}")
             return []
     
     def save_domains(self, domains: List[str], output_file: str):

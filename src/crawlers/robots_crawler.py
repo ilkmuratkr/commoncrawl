@@ -47,6 +47,8 @@ class RobotsCrawler:
     async def process_chunk(self, chunk: List[str], worker_id: int) -> List[str]:
         """Tek chunk'ı işle"""
         domains_found = []
+        total_files_processed = 0
+        wordpress_files_found = 0
         
         try:
             # Chunk başında VPN bağlantısını kontrol et
@@ -76,15 +78,21 @@ class RobotsCrawler:
                         
                         # Her dosyayı işle
                         batch_domains = 0
+                        batch_files_processed = 0
+                        
                         for path, content in results:
                             if content:
                                 try:
+                                    batch_files_processed += 1
+                                    total_files_processed += 1
+                                    
                                     # WordPress kontrolü
                                     domains = self.wordpress_detector.process_robots_file(path, content)
                                     if domains:
                                         domains_found.extend(domains)
                                         batch_domains += len(domains)
-                                        logger.info(f"Worker {worker_id}: {len(domains)} domain bulundu - {domains[0]}")
+                                        wordpress_files_found += 1
+                                        logger.info(f"Worker {worker_id}: WordPress bulundu - {domains[0]}")
                                     
                                     # Memory temizliği
                                     del content
@@ -94,9 +102,9 @@ class RobotsCrawler:
                                     logger.error(f"Dosya işleme hatası {path}: {e}")
                         
                         if batch_domains > 0:
-                            logger.info(f"Worker {worker_id}: Batch {batch_num} tamamlandı - {batch_domains} domain bulundu")
+                            logger.info(f"Worker {worker_id}: Batch {batch_num} tamamlandı - {batch_domains} WordPress domain bulundu")
                         else:
-                            logger.debug(f"Worker {worker_id}: Batch {batch_num} tamamlandı - domain bulunamadı")
+                            logger.info(f"Worker {worker_id}: Batch {batch_num} tamamlandı - WordPress bulunamadı")
                         
                         # Batch'ler arası kısa bekleme
                         await asyncio.sleep(2.0)
@@ -116,7 +124,7 @@ class RobotsCrawler:
                         else:
                             logger.error(f"Batch işleme hatası: {e}")
                 
-                logger.info(f"Worker {worker_id}: Chunk tamamlandı - {len(domains_found)} domain bulundu")
+                logger.info(f"Worker {worker_id}: Chunk tamamlandı - {len(domains_found)} WordPress domain bulundu ({wordpress_files_found}/{total_files_processed} dosyada)")
                 
         except Exception as e:
             logger.error(f"Chunk işleme hatası (Worker {worker_id}): {e}")

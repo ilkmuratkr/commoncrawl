@@ -15,9 +15,9 @@ ROBOTSTXT_PATHS_FILE = PROJECT_ROOT / "robotstxt.paths (1)"  # Tam ölçekli ça
 WORDPRESS_DOMAINS_FILE = RESULTS_DIR / "wordpress_domains.txt"
 
 # Crawler ayarları
-MAX_WORKERS = 1  # Tek worker kullanacağız
-CHUNK_SIZE = 50  # Daha küçük chunk'lar
-BATCH_SIZE = 5   # Daha küçük batch'ler
+MAX_WORKERS = 5  # Worker sayısını artırdım
+CHUNK_SIZE = 100  # Chunk boyutunu artırdım
+BATCH_SIZE = 10   # Batch boyutunu artırdım
 
 # HTTP ayarları
 REQUEST_TIMEOUT = 60  # Normal timeout

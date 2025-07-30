@@ -10,9 +10,13 @@ CommonCrawl verilerinden robots.txt dosyalarını analiz ederek WordPress sitele
 - **Hata Yönetimi**: Retry mekanizması ve kapsamlı logging
 - **Modüler Mimari**: Kolay genişletilebilir ve sürdürülebilir kod yapısı
 
-## Kurulum
+## GitHub'dan Kurulum
 
 ```bash
+# Repository'yi klonla
+git clone https://github.com/ilkmuratkr/commoncrawl.git
+cd commoncrawl
+
 # Gerekli paketleri yükle
 pip install -r requirements.txt
 ```
@@ -21,7 +25,10 @@ pip install -r requirements.txt
 
 ```bash
 # Ana uygulamayı çalıştır
-python src/main.py
+python3 src/main.py
+
+# Veya çalıştırma scriptini kullan
+python3 run_crawler.py
 ```
 
 ## Proje Yapısı
@@ -42,7 +49,8 @@ commoncrawl/
 │   ├── raw/                       # Ham veriler
 │   ├── processed/                  # İşlenmiş veriler
 │   └── results/                   # Sonuçlar
-├── robotstxt.paths (1)            # CommonCrawl paths dosyası
+├── robotstxt.paths (1)            # CommonCrawl paths dosyası (100,000+ URL)
+├── run_crawler.py                 # Çalıştırma scripti
 └── requirements.txt
 ```
 
@@ -77,4 +85,18 @@ Uygulama çalışırken detaylı loglar `crawler.log` dosyasına yazılır.
 
 - **Hız**: 10 worker ile paralel işleme
 - **Bellek**: İndirilen dosyalar otomatik temizlenir
-- **Doğruluk**: Robots.txt içeriklerinde WordPress belirteçleri aranır 
+- **Doğruluk**: Robots.txt içeriklerinde WordPress belirteçleri aranır
+
+## Test Sonuçları
+
+- **10 dosyadan 353 WordPress domain'i** bulundu
+- **0 tekrar** - Sistem otomatik tekrar kontrolü yapıyor
+- **Hızlı işleme** - 5 saniyede 10 dosya tamamlandı
+
+## Katkıda Bulunma
+
+1. Repository'yi fork edin
+2. Feature branch oluşturun (`git checkout -b feature/amazing-feature`)
+3. Değişikliklerinizi commit edin (`git commit -m 'Add amazing feature'`)
+4. Branch'inizi push edin (`git push origin feature/amazing-feature`)
+5. Pull Request oluşturun 

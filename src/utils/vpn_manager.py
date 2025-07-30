@@ -22,10 +22,10 @@ class VPNManager:
         try:
             logger.info("Mevcut WireGuard interface'leri temizleniyor...")
             
-            # ip link show komutu ile mevcut interface'leri listele
+            # macOS için ifconfig kullan
             result = await asyncio.wait_for(
                 asyncio.create_subprocess_exec(
-                    'ip', 'link', 'show',
+                    'ifconfig', '-l',
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 ),
@@ -34,27 +34,25 @@ class VPNManager:
             
             if result.returncode == 0:
                 stdout, _ = await result.communicate()
-                output = stdout.decode()
+                interfaces = stdout.decode().strip().split()
                 
-                # WireGuard interface'lerini bul (wg* veya utun*)
-                import re
-                wg_interfaces = re.findall(r'(\d+):\s+(wg[^:]+|utun\d+):', output)
-                
-                for _, interface_name in wg_interfaces:
-                    logger.info(f"Interface temizleniyor: {interface_name}")
-                    try:
-                        # Interface'i sil
-                        await asyncio.wait_for(
-                            asyncio.create_subprocess_exec(
-                                'sudo', 'ip', 'link', 'delete', 'dev', interface_name,
-                                stdout=asyncio.subprocess.PIPE,
-                                stderr=asyncio.subprocess.PIPE
-                            ),
-                            timeout=5.0
-                        )
-                        logger.info(f"✅ Interface silindi: {interface_name}")
-                    except Exception as e:
-                        logger.debug(f"Interface silme hatası (normal): {e}")
+                # WireGuard interface'lerini bul (utun*)
+                for interface in interfaces:
+                    if interface.startswith('utun') and interface != 'utun0':
+                        logger.info(f"Interface temizleniyor: {interface}")
+                        try:
+                            # Interface'i kapat
+                            await asyncio.wait_for(
+                                asyncio.create_subprocess_exec(
+                                    'sudo', 'ifconfig', interface, 'down',
+                                    stdout=asyncio.subprocess.PIPE,
+                                    stderr=asyncio.subprocess.PIPE
+                                ),
+                                timeout=5.0
+                            )
+                            logger.info(f"✅ Interface kapatıldı: {interface}")
+                        except Exception as e:
+                            logger.debug(f"Interface kapatma hatası (normal): {e}")
             
             logger.info("Interface temizleme tamamlandı")
             
@@ -75,46 +73,74 @@ class VPNManager:
         return self.vpn_configs
     
     def get_available_vpn(self) -> Optional[str]:
-        """Kullanılabilir bir VPN config seç"""
+        """Kullanılabilir bir VPN config seç - geliştirilmiş rotasyon"""
         available = [vpn for vpn in self.vpn_configs if vpn not in self.used_vpns]
         
         if not available:
             # Tüm VPN'ler kullanıldıysa, used_vpns'i temizle
             self.used_vpns.clear()
             available = self.vpn_configs
-            logger.info("Tüm VPN'ler kullanıldı, liste sıfırlandı")
+            logger.info("🔄 Tüm VPN'ler kullanıldı, liste sıfırlandı")
+            logger.info(f"📊 Toplam VPN sayısı: {len(self.vpn_configs)}")
         
         if available:
             vpn = random.choice(available)
             self.used_vpns.add(vpn)
+            logger.info(f"🔗 VPN seçildi: {vpn} (Kullanılan: {len(self.used_vpns)}/{len(self.vpn_configs)})")
             return vpn
         
+        logger.error("❌ Kullanılabilir VPN bulunamadı!")
         return None
     
     async def test_vpn_connection(self) -> bool:
-        """VPN bağlantısını test et - gerçek IP'yi kontrol et"""
+        """VPN bağlantısını test et - IP değişikliğini kontrol et"""
         try:
             logger.info("VPN bağlantısı test ediliyor...")
             
-            timeout = aiohttp.ClientTimeout(total=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get('https://httpbin.org/ip') as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        current_ip = data.get('origin', '')
-                        logger.info(f"VPN Test - Mevcut IP: {current_ip}")
-                        
-                        # Sunucunun orijinal IP'si ile karşılaştır
-                        if current_ip != "35.225.81.214":
-                            logger.info(f"✅ VPN bağlantısı başarılı - IP değişti: {current_ip}")
-                            return True
-                        else:
-                            logger.warning(f"❌ VPN bağlantısı başarısız - IP değişmedi: {current_ip}")
-                            return False
-                    else:
-                        logger.error(f"VPN test hatası - HTTP {response.status}")
-                        return False
-                        
+            # Birden fazla IP servisi dene
+            ip_services = [
+                'https://httpbin.org/ip',
+                'https://api.ipify.org?format=json',
+                'https://ipinfo.io/json',
+                'https://api.myip.com'
+            ]
+            
+            for service in ip_services:
+                try:
+                    timeout = aiohttp.ClientTimeout(total=5)
+                    async with aiohttp.ClientSession(timeout=timeout) as session:
+                        async with session.get(service) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                
+                                if service == 'https://httpbin.org/ip':
+                                    current_ip = data.get('origin', '')
+                                elif service == 'https://api.ipify.org?format=json':
+                                    current_ip = data.get('ip', '')
+                                elif service == 'https://ipinfo.io/json':
+                                    current_ip = data.get('ip', '')
+                                elif service == 'https://api.myip.com':
+                                    current_ip = data.get('ip', '')
+                                else:
+                                    continue
+                                
+                                logger.info(f"VPN Test - Mevcut IP: {current_ip}")
+                                
+                                # Sunucunun orijinal IP'si ile karşılaştır
+                                if current_ip != "35.225.81.214":
+                                    logger.info(f"✅ VPN bağlantısı başarılı - IP değişti: {current_ip}")
+                                    return True
+                                else:
+                                    logger.warning(f"❌ VPN bağlantısı başarısız - IP değişmedi: {current_ip}")
+                                    return False
+                                    
+                except Exception as e:
+                    logger.debug(f"IP servisi başarısız {service}: {e}")
+                    continue
+            
+            logger.error("❌ Tüm IP servisleri başarısız")
+            return False
+            
         except Exception as e:
             logger.error(f"VPN test hatası: {e}")
             return False
@@ -161,7 +187,7 @@ class VPNManager:
             return False
     
     async def rotate_vpn_on_403(self) -> bool:
-        """403 hatası alınca VPN değiştir"""
+        """403 hatası alınca VPN değiştir - daha agresif rotasyon"""
         if not VPN_ROTATION_ON_403:
             logger.info("VPN rotasyon devre dışı")
             return False
@@ -170,33 +196,41 @@ class VPNManager:
             # Mevcut VPN'i kes
             if self.current_vpn:
                 await self._disconnect_vpn(self.current_vpn)
-                logger.info(f"Mevcut VPN kesildi: {self.current_vpn}")
+                logger.info(f"403 hatası nedeniyle VPN değiştiriliyor: {self.current_vpn}")
             
-            # Yeni VPN seç ve bağlan
-            max_attempts = 3
+            # Daha fazla VPN dene
+            max_attempts = 10  # 3'ten 10'a çıkarıldı
+            successful_vpns = []
+            
             for attempt in range(max_attempts):
                 new_vpn = self.get_available_vpn()
                 if not new_vpn:
                     logger.error("Yeni VPN config bulunamadı")
                     return False
                 
-                logger.info(f"Yeni VPN deneniyor ({attempt + 1}/{max_attempts}): {new_vpn}")
+                logger.info(f"403 rotasyon - Yeni VPN deneniyor ({attempt + 1}/{max_attempts}): {new_vpn}")
                 
                 success = await self._connect_vpn(new_vpn)
                 if success:
                     # VPN bağlantısını test et
                     if await self.test_vpn_connection():
                         self.current_vpn = new_vpn
-                        logger.info(f"VPN değiştirildi ve test edildi: {new_vpn}")
+                        successful_vpns.append(new_vpn)
+                        logger.info(f"✅ 403 rotasyon başarılı - VPN değiştirildi: {new_vpn}")
                         return True
                     else:
                         logger.warning(f"Yeni VPN bağlantısı başarısız: {new_vpn}")
                         await self._disconnect_vpn(new_vpn)
                         self.used_vpns.discard(new_vpn)
+                else:
+                    logger.warning(f"VPN bağlantısı başarısız: {new_vpn}")
+                    self.used_vpns.discard(new_vpn)
                 
-                await asyncio.sleep(2)
+                # Kısa bekleme
+                await asyncio.sleep(1)
             
-            logger.error(f"{max_attempts} deneme sonrası yeni VPN bağlantısı başarısız")
+            logger.error(f"{max_attempts} deneme sonrası 403 rotasyon başarısız")
+            logger.info(f"Başarılı VPN'ler: {successful_vpns}")
             return False
     
     async def _connect_vpn(self, vpn_config: str) -> bool:
@@ -246,10 +280,16 @@ class VPNManager:
                     logger.info(f"✅ Split tunneling VPN bağlantısı başarılı: {vpn_config}")
                 else:
                     stdout, stderr = await result.communicate()
-                    logger.error(f"❌ VPN bağlantısı başarısız: {vpn_config}")
-                    logger.error(f"stdout: {stdout.decode()}")
-                    logger.error(f"stderr: {stderr.decode()}")
-                    return False
+                    stderr_text = stderr.decode()
+                    
+                    # "File exists" hatası normal, route zaten mevcut demektir
+                    if "File exists" in stderr_text and "Backgrounding route monitor" in stderr_text:
+                        logger.info(f"✅ VPN bağlantısı başarılı (route'lar zaten mevcut): {vpn_config}")
+                    else:
+                        logger.error(f"❌ VPN bağlantısı başarısız: {vpn_config}")
+                        logger.error(f"stdout: {stdout.decode()}")
+                        logger.error(f"stderr: {stderr_text}")
+                        return False
             
             # VPN bağlantısını test et
             await asyncio.sleep(2)  # Bağlantının kurulması için bekle
@@ -351,13 +391,13 @@ class VPNManager:
             
             # CommonCrawl'ın gerçek IP adresleri (sadece bunlar için VPN kullan)
             commoncrawl_ips = [
-                # data.commoncrawl.org IP'leri
-                "3.169.85.122/32",   # data.commoncrawl.org IP
-                "3.169.85.39/32",    # data.commoncrawl.org IP
-                "3.169.85.59/32",    # data.commoncrawl.org IP
-                "3.169.85.63/32",    # data.commoncrawl.org IP
+                # data.commoncrawl.org IP'leri (güncel)
+                "3.160.57.128/32",   # data.commoncrawl.org IP
+                "3.160.57.34/32",    # data.commoncrawl.org IP
+                "3.160.57.125/32",   # data.commoncrawl.org IP
+                "3.160.57.65/32",    # data.commoncrawl.org IP
                 # CloudFront IP range'leri (yedek)
-                "3.169.0.0/16",      # CloudFront IP range
+                "3.160.0.0/16",      # CloudFront IP range
                 # Test siteleri IP'leri
                 "54.221.61.107/32",  # httpbin.org IP
                 "34.192.139.201/32", # httpbin.org IP
@@ -368,7 +408,7 @@ class VPNManager:
                 "104.26.12.205/32",  # api.ipify.org IP
             ]
             
-            # AllowedIPs satırını bul ve değiştir
+            # AllowedIPs satırını bul ve değiştir, DNS'i kaldır
             lines = config_content.split('\n')
             new_lines = []
             
@@ -377,6 +417,9 @@ class VPNManager:
                     # Sadece CommonCrawl IP'lerini ekle
                     new_line = f"AllowedIPs = {', '.join(commoncrawl_ips)}"
                     new_lines.append(new_line)
+                elif line.startswith('DNS = '):
+                    # DNS satırını kaldır
+                    continue
                 else:
                     new_lines.append(line)
             

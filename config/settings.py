@@ -38,7 +38,7 @@ WORDPRESS_PATTERNS = [
 
 # VPN ayarları
 VPN_CONFIG_DIR = "mullvad_wireguard_macos_all_all"
-VPN_ROTATION_ON_403 = True  # VPN'yi tekrar aktif hale getirdim
+VPN_ROTATION_ON_403 = True  # VPN rotasyonu aktif
 VPN_CONNECTION_TIMEOUT = 15  # VPN bağlantı timeout'u
 
 # Dizinleri oluştur

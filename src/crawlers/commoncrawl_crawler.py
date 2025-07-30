@@ -207,10 +207,11 @@ class CommonCrawlCrawler:
             warc_url = f"https://data.commoncrawl.org/{warc_path}"
             logger.info(f"📥 WARC dosyası indiriliyor: {warc_url}")
             
-            result = await self.fetch_commoncrawl_data(warc_path)
+            # WARC dosyaları için binary okuma
+            result = await self.fetch_warc_file(warc_path)
             
             if result and result['status'] == 200:
-                # Dosyayı işle
+                # Binary içeriği text'e çevir
                 content = result['content']
                 
                 # WordPress domain'leri ara
@@ -228,6 +229,42 @@ class CommonCrawlCrawler:
         except Exception as e:
             logger.error(f"❌ WARC işleme hatası: {e}")
             raise
+
+    async def fetch_warc_file(self, path: str) -> Optional[Dict[str, Any]]:
+        """WARC dosyasını binary olarak indir"""
+        url = f"https://data.commoncrawl.org/{path}"
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        # Binary içeriği oku
+                        content = await response.read()
+                        
+                        # Gzip sıkıştırılmışsa aç
+                        if path.endswith('.gz'):
+                            import gzip
+                            content = gzip.decompress(content)
+                        
+                        # Binary'den text'e çevir (hata toleranslı)
+                        try:
+                            text_content = content.decode('utf-8', errors='ignore')
+                        except:
+                            text_content = content.decode('latin-1', errors='ignore')
+                        
+                        return {
+                            "status": response.status,
+                            "content": text_content,
+                            "headers": dict(response.headers),
+                            "url": url
+                        }
+                    else:
+                        logger.error(f"❌ WARC indirme hatası: {url} (Status: {response.status})")
+                        return None
+                        
+        except Exception as e:
+            logger.error(f"❌ WARC fetch hatası: {e}")
+            return None
 
 # Test fonksiyonu
 async def test_commoncrawl_crawler():

@@ -151,10 +151,21 @@ class RobotsCrawler:
                     pbar.update(1)
     
     def save_results(self):
-        """Sonuçları kaydet"""
-        unique_domains = list(self.domains_found)
-        self.wordpress_detector.save_domains(unique_domains, WORDPRESS_DOMAINS_FILE)
-        logger.info(f"Toplam {len(unique_domains)} benzersiz domain bulundu")
+        """Sonuçları kaydet (artık anlık ekleme var)"""
+        total_domains = self.wordpress_detector.get_total_domains()
+        logger.info(f"Toplam {total_domains} benzersiz WordPress domain bulundu ve kaydedildi")
+        
+        # İlk 5 domain'i göster
+        try:
+            with open(WORDPRESS_DOMAINS_FILE, 'r', encoding='utf-8') as f:
+                domains = [line.strip() for line in f if line.strip()]
+            
+            if domains:
+                logger.info("İlk 5 domain:")
+                for i, domain in enumerate(domains[:5]):
+                    logger.info(f"  {i+1}. {domain}")
+        except Exception as e:
+            logger.error(f"Domain listesi okuma hatası: {e}")
     
     async def run(self):
         """Ana crawler işlemini çalıştır"""

@@ -71,6 +71,11 @@ class WordPressDetector:
                         from urllib.parse import urlparse
                         parsed = urlparse(uri)
                         current_domain = parsed.netloc
+                        
+                        # www. ile başlıyorsa kaldır
+                        if current_domain.startswith('www.'):
+                            current_domain = current_domain[4:]
+                        
                         # DEBUG logunu kaldırdım
                 
                 # Content-Type kontrolü

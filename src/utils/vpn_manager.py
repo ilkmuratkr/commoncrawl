@@ -51,7 +51,7 @@ class VPNManager:
         try:
             async with aiohttp.ClientSession() as session:
                 # IP adresini kontrol et
-                async with session.get('https://httpbin.org/ip', timeout=3) as response:  # 5'ten 3'e düşürdüm
+                async with session.get('https://httpbin.org/ip', timeout=10) as response:  # 3'ten 10'a çıkardım
                     if response.status == 200:
                         data = await response.json()
                         ip = data.get('origin', '')

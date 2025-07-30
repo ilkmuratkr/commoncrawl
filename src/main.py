@@ -10,13 +10,13 @@ sys.path.insert(0, str(project_root))
 from src.crawlers.robots_crawler import RobotsCrawler
 from config.settings import WORDPRESS_DOMAINS_FILE
 
-# Logging ayarları
+# Logging konfigürasyonu
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # DEBUG seviyesine çıkardım
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('crawler.log'),
-        logging.StreamHandler(sys.stdout)
+        logging.StreamHandler()
     ]
 )
 
@@ -25,35 +25,16 @@ logger = logging.getLogger(__name__)
 async def main():
     """Ana uygulama"""
     try:
-        logger.info("WordPress Domain Crawler başlatılıyor...")
-        
-        # Crawler'ı başlat
         crawler = RobotsCrawler()
-        
-        # İşlemi çalıştır
         await crawler.run()
         
-        # Sonuçları göster
-        if WORDPRESS_DOMAINS_FILE.exists():
-            with open(WORDPRESS_DOMAINS_FILE, 'r', encoding='utf-8') as f:
-                domains = f.read().splitlines()
-            
-            logger.info(f"İşlem tamamlandı! {len(domains)} WordPress domain'i bulundu")
-            logger.info(f"Sonuçlar: {WORDPRESS_DOMAINS_FILE}")
-            
-            # İlk 10 domain'i göster
-            if domains:
-                logger.info("İlk 10 domain:")
-                for i, domain in enumerate(domains[:10]):
-                    logger.info(f"  {i+1}. {domain}")
-        else:
-            logger.warning("Sonuç dosyası bulunamadı!")
-            
+        # Sonuç özeti
+        print(f"\n💾 Sonuçlar: {crawler.wordpress_detector.output_file}")
+        
     except KeyboardInterrupt:
-        logger.info("Kullanıcı tarafından durduruldu")
+        print("\n⏹️ Kullanıcı tarafından durduruldu")
     except Exception as e:
-        logger.error(f"Uygulama hatası: {e}")
-        raise
+        print(f"\n❌ Hata: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main()) 

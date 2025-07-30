@@ -58,10 +58,16 @@ class RobotsCrawler:
                     return domains_found
                 logger.info("VPN bağlantısı başarılı, işlem başlıyor...")
             
+            logger.info(f"Worker {worker_id}: {len(chunk)} dosya işlenecek")
+            
             async with GLOBAL_SEMAPHORE:
                 # Chunk'ı batch'lere böl
                 for i in range(0, len(chunk), BATCH_SIZE):
                     batch = chunk[i:i + BATCH_SIZE]
+                    batch_num = i // BATCH_SIZE + 1
+                    total_batches = (len(chunk) + BATCH_SIZE - 1) // BATCH_SIZE
+                    
+                    logger.info(f"Worker {worker_id}: Batch {batch_num}/{total_batches} işleniyor ({len(batch)} dosya)")
                     
                     try:
                         # Batch'i indir
@@ -69,12 +75,16 @@ class RobotsCrawler:
                             results = await downloader.download_batch(batch)
                         
                         # Her dosyayı işle
+                        batch_domains = 0
                         for path, content in results:
                             if content:
                                 try:
                                     # WordPress kontrolü
                                     domains = self.wordpress_detector.process_robots_file(path, content)
-                                    domains_found.extend(domains)
+                                    if domains:
+                                        domains_found.extend(domains)
+                                        batch_domains += len(domains)
+                                        logger.info(f"Worker {worker_id}: {len(domains)} domain bulundu - {domains[0]}")
                                     
                                     # Memory temizliği
                                     del content
@@ -82,6 +92,11 @@ class RobotsCrawler:
                                     
                                 except Exception as e:
                                     logger.error(f"Dosya işleme hatası {path}: {e}")
+                        
+                        if batch_domains > 0:
+                            logger.info(f"Worker {worker_id}: Batch {batch_num} tamamlandı - {batch_domains} domain bulundu")
+                        else:
+                            logger.debug(f"Worker {worker_id}: Batch {batch_num} tamamlandı - domain bulunamadı")
                         
                         # Batch'ler arası kısa bekleme
                         await asyncio.sleep(2.0)
@@ -100,6 +115,8 @@ class RobotsCrawler:
                                 logger.error("VPN değiştirme başarısız")
                         else:
                             logger.error(f"Batch işleme hatası: {e}")
+                
+                logger.info(f"Worker {worker_id}: Chunk tamamlandı - {len(domains_found)} domain bulundu")
                 
         except Exception as e:
             logger.error(f"Chunk işleme hatası (Worker {worker_id}): {e}")

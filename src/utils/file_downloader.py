@@ -1,103 +1,110 @@
-import asyncio
 import aiohttp
+import asyncio
 import gzip
-import os
-import tempfile
-from pathlib import Path
-from typing import List, Optional, Tuple
 import logging
-
+from typing import List, Tuple, Optional
 from config.settings import REQUEST_TIMEOUT, MAX_RETRIES, RETRY_DELAY, COMMONCRAWL_BASE_URL
 
 logger = logging.getLogger(__name__)
 
+# Global semaphore for connection control
+GLOBAL_SEMAPHORE = asyncio.Semaphore(10)
+
 class FileDownloader:
-    """CommonCrawl dosyalarını indiren ve işleyen sınıf"""
-    
     def __init__(self):
-        self.session: Optional[aiohttp.ClientSession] = None
-        
-    async def __aenter__(self):
-        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        connector = aiohttp.TCPConnector(
-            limit=20,  # Maksimum bağlantı sayısı (azaltıldı)
-            limit_per_host=5,  # Host başına maksimum bağlantı (azaltıldı)
-            ttl_dns_cache=300,  # DNS cache süresi
+        self.timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        self.connector = aiohttp.TCPConnector(
+            limit=50,
+            limit_per_host=10,
+            ttl_dns_cache=300,
             use_dns_cache=True,
             enable_cleanup_closed=True,
-            force_close=True  # Bağlantıları zorla kapat
+            force_close=True
         )
-        headers = {
+        self.headers = {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive',
-            'Referer': 'https://commoncrawl.org/',
+            'Referer': 'https://commoncrawl.org/'
         }
+    
+    async def __aenter__(self):
         self.session = aiohttp.ClientSession(
-            timeout=timeout,
-            connector=connector,
-            headers=headers
+            timeout=self.timeout,
+            connector=self.connector,
+            headers=self.headers
         )
+        logger.debug("FileDownloader session başlatıldı")
         return self
-        
+    
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.session:
-            await self.session.close()
+        await self.session.close()
+        logger.debug("FileDownloader session kapatıldı")
     
     async def download_gzip_file(self, path: str) -> Optional[str]:
-        """Gzip dosyasını indir ve içeriğini döndür"""
+        """Tek gzip dosyasını indir ve içeriğini döndür"""
         url = f"{COMMONCRAWL_BASE_URL}{path}"
         
         for attempt in range(MAX_RETRIES):
             try:
-                async with self.session.get(url) as response:
-                    if response.status == 200:
-                        content = await response.read()
-                        # Gzip dosyasını aç
-                        try:
-                            decompressed = gzip.decompress(content)
-                            return decompressed.decode('utf-8', errors='ignore')
-                        except Exception as e:
-                            logger.warning(f"Gzip açma hatası {url}: {e}")
-                            return None
-                    else:
-                        logger.warning(f"HTTP {response.status} for {url}")
-                        
-            except Exception as e:
-                error_msg = str(e)
-                if "Too many open files" in error_msg:
-                    logger.error(f"Too many open files hatası - sistem limiti aşıldı: {url}")
-                    # Daha uzun bekleme süresi
-                    await asyncio.sleep(RETRY_DELAY * 2)
-                else:
-                    logger.warning(f"İndirme hatası {url} (attempt {attempt + 1}): {e}")
-                    if attempt < MAX_RETRIES - 1:
-                        await asyncio.sleep(RETRY_DELAY)
+                async with GLOBAL_SEMAPHORE:
+                    logger.debug(f"İndiriliyor: {path} (deneme {attempt + 1}/{MAX_RETRIES})")
                     
+                    async with self.session.get(url) as response:
+                        if response.status == 200:
+                            content = await response.read()
+                            logger.debug(f"Başarılı: {path} ({len(content)} bytes)")
+                            
+                            # Gzip decompress
+                            try:
+                                decompressed = gzip.decompress(content)
+                                text_content = decompressed.decode('utf-8', errors='ignore')
+                                logger.debug(f"Decompress başarılı: {path} ({len(text_content)} karakter)")
+                                return text_content
+                            except Exception as e:
+                                logger.error(f"Decompress hatası {path}: {e}")
+                                return None
+                        else:
+                            logger.warning(f"HTTP {response.status}: {path}")
+                            if response.status == 403:
+                                logger.error(f"403 Forbidden: {path}")
+                                raise Exception(f"403 Forbidden: {path}")
+                            return None
+                            
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout hatası {path} (deneme {attempt + 1})")
+            except Exception as e:
+                logger.warning(f"İndirme hatası {path} (deneme {attempt + 1}): {e}")
+            
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(RETRY_DELAY)
+        
+        logger.error(f"Tüm denemeler başarısız: {path}")
         return None
     
     async def download_batch(self, paths: List[str]) -> List[Tuple[str, Optional[str]]]:
         """Birden fazla dosyayı paralel indir"""
-        semaphore = asyncio.Semaphore(1)  # Rate limiting için tek bağlantı
-        
-        async def download_with_semaphore(path: str):
-            async with semaphore:
-                return await self.download_gzip_file(path)
+        logger.info(f"Batch indiriliyor: {len(paths)} dosya")
         
         tasks = []
         for path in paths:
-            task = asyncio.create_task(download_with_semaphore(path))
-            tasks.append((path, task))
+            task = asyncio.create_task(self.download_gzip_file(path))
+            tasks.append(task)
         
-        results = []
-        for path, task in tasks:
-            try:
-                content = await task
-                results.append((path, content))
-            except Exception as e:
-                logger.error(f"Task hatası {path}: {e}")
-                results.append((path, None))
-                
-        return results 
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Sonuçları işle
+        processed_results = []
+        success_count = 0
+        
+        for i, result in enumerate(results):
+            path = paths[i]
+            if isinstance(result, Exception):
+                logger.error(f"Task hatası {path}: {result}")
+                processed_results.append((path, None))
+            else:
+                if result:
+                    success_count += 1
+                    logger.debug(f"Batch başarılı: {path}")
+                processed_results.append((path, result))
+        
+        logger.info(f"Batch tamamlandı: {success_count}/{len(paths)} başarılı")
+        return processed_results 

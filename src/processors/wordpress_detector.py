@@ -1,102 +1,98 @@
 import re
 import logging
-from typing import List, Set, Optional
-from urllib.parse import urlparse
-
-from config.settings import WORDPRESS_PATTERNS
+from typing import List
+from config.settings import WORDPRESS_PATTERNS, WORDPRESS_DOMAINS_FILE
 
 logger = logging.getLogger(__name__)
 
 class WordPressDetector:
-    """Robots.txt dosyalarında WordPress belirteçlerini tespit eden sınıf"""
-    
     def __init__(self):
-        self.wordpress_patterns = WORDPRESS_PATTERNS
-        self.detected_domains: Set[str] = set()
-        
-    def extract_domain_from_path(self, path: str) -> Optional[str]:
-        """WARC dosya yolundan domain çıkar"""
-        try:
-            # WARC dosya adından domain çıkarma
-            # Örnek: crawl-data/CC-MAIN-2025-30/segments/1751905933612.63/robotstxt/CC-MAIN-20250707183638-20250707213638-00000.warc.gz
-            # Bu durumda robots.txt içeriğinden domain çıkarmamız gerekiyor
-            return None
-        except Exception as e:
-            logger.error(f"Domain çıkarma hatası {path}: {e}")
-            return None
+        self.output_file = WORDPRESS_DOMAINS_FILE
     
     def extract_domains_from_robots_content(self, content: str) -> List[str]:
         """Robots.txt içeriğinden domain'leri çıkar"""
-        domains = set()
+        domains = []
         
-        if not content:
-            return []
+        try:
+            lines = content.split('\n')
+            current_domain = None
             
-        # WARC formatını parse et
-        lines = content.split('\n')
-        current_domain = None
-        in_robots_content = False
+            for line in lines:
+                line = line.strip()
+                
+                # WARC header'larını kontrol et
+                if line.startswith('WARC-Target-URI:'):
+                    # URL'den domain çıkar
+                    uri = line.split(':', 1)[1].strip()
+                    if uri.startswith('http'):
+                        from urllib.parse import urlparse
+                        parsed = urlparse(uri)
+                        current_domain = parsed.netloc
+                        logger.debug(f"Domain bulundu: {current_domain}")
+                
+                # Content-Type kontrolü
+                elif line.startswith('Content-Type:') and 'text/plain' in line:
+                    logger.debug("Content-Type text/plain doğrulandı")
+                
+                # WordPress pattern kontrolü
+                elif current_domain and any(pattern in line for pattern in WORDPRESS_PATTERNS):
+                    domains.append(current_domain)
+                    logger.info(f"WordPress pattern bulundu: {current_domain} - {line[:50]}...")
+                    break  # Bir pattern bulunduysa yeterli
+            
+            if domains:
+                logger.debug(f"Toplam {len(domains)} domain bulundu")
+            else:
+                logger.debug("WordPress pattern bulunamadı")
+                
+        except Exception as e:
+            logger.error(f"Domain çıkarma hatası: {e}")
         
-        for line in lines:
-            line = line.strip()
-            
-            # WARC header'larını işle
-            if line.startswith('WARC-Target-URI:'):
-                # URL'den domain çıkar
-                try:
-                    url = line.split(':', 1)[1].strip()
-                    from urllib.parse import urlparse
-                    parsed = urlparse(url)
-                    current_domain = parsed.netloc
-                except:
-                    pass
-                continue
-                
-            # Content-Type header'ını kontrol et
-            if line.startswith('Content-Type:'):
-                if 'text/plain' in line.lower():
-                    in_robots_content = True
-                else:
-                    in_robots_content = False
-                continue
-                
-            # WARC header'larını atla
-            if line.startswith('WARC/') or line.startswith('Content-Length:') or line.startswith('WARC-'):
-                continue
-                
-            # Robots.txt içeriğinde WordPress belirteçlerini ara
-            if in_robots_content and current_domain:
-                if any(pattern in line.lower() for pattern in self.wordpress_patterns):
-                    domains.add(current_domain)
-                    logger.debug(f"WordPress bulundu: {current_domain} - {line}")
-                
-        return list(domains)
+        return domains
     
     def detect_wordpress_in_content(self, content: str) -> bool:
-        """İçerikte WordPress belirteçlerini ara"""
-        if not content:
-            return False
-            
-        content_lower = content.lower()
-        return any(pattern in content_lower for pattern in self.wordpress_patterns)
+        """İçerikte WordPress belirteci var mı kontrol et"""
+        for pattern in WORDPRESS_PATTERNS:
+            if pattern in content:
+                logger.debug(f"WordPress pattern bulundu: {pattern}")
+                return True
+        return False
     
     def process_robots_file(self, path: str, content: str) -> List[str]:
         """Robots.txt dosyasını işle ve WordPress domain'lerini bul"""
-        if not content:
-            return []
-            
-        domains = self.extract_domains_from_robots_content(content)
+        logger.debug(f"İşleniyor: {path}")
         
-        if domains:
-            logger.info(f"WordPress domain'leri bulundu {path}: {domains}")
-            
-        return domains
+        if not content:
+            logger.debug(f"Boş içerik: {path}")
+            return []
+        
+        # WordPress kontrolü
+        if self.detect_wordpress_in_content(content):
+            domains = self.extract_domains_from_robots_content(content)
+            if domains:
+                logger.info(f"WordPress domain bulundu: {domains[0]} ({path})")
+            return domains
+        else:
+            logger.debug(f"WordPress pattern bulunamadı: {path}")
+            return []
     
     def save_domains(self, domains: List[str], output_file: str):
         """Domain'leri dosyaya kaydet"""
         try:
-            with open(output_file, 'a', encoding='utf-8') as f:
-                for domain in domains:
+            # Tekrarlayan domain'leri temizle
+            unique_domains = list(set(domains))
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                for domain in unique_domains:
                     f.write(f"{domain}\n")
+            
+            logger.info(f"Toplam {len(unique_domains)} benzersiz domain kaydedildi: {output_file}")
+            
+            # İlk 5 domain'i göster
+            if unique_domains:
+                logger.info("İlk 5 domain:")
+                for i, domain in enumerate(unique_domains[:5]):
+                    logger.info(f"  {i+1}. {domain}")
+                    
         except Exception as e:
             logger.error(f"Domain kaydetme hatası: {e}") 

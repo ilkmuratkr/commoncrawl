@@ -3,19 +3,19 @@ import asyncio
 import gzip
 import logging
 from typing import List, Tuple, Optional
-from config.settings import REQUEST_TIMEOUT, MAX_RETRIES, RETRY_DELAY, COMMONCRAWL_BASE_URL
+from config.settings import REQUEST_TIMEOUT, MAX_RETRIES, RETRY_DELAY, COMMONCRAWL_BASE_URL, MAX_WORKERS
 
 logger = logging.getLogger(__name__)
 
-# Global semaphore for connection control
-GLOBAL_SEMAPHORE = asyncio.Semaphore(10)
+# Global semaphore for connection control - MAX_WORKERS ile uyumlu
+GLOBAL_SEMAPHORE = asyncio.Semaphore(MAX_WORKERS)
 
 class FileDownloader:
     def __init__(self):
         self.timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         self.connector = aiohttp.TCPConnector(
-            limit=50,
-            limit_per_host=10,
+            limit=MAX_WORKERS * 2,  # MAX_WORKERS ile uyumlu
+            limit_per_host=MAX_WORKERS,  # MAX_WORKERS ile uyumlu
             ttl_dns_cache=300,
             use_dns_cache=True,
             enable_cleanup_closed=True,

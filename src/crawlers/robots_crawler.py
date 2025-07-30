@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 # Global semaphore for connection control
 GLOBAL_SEMAPHORE = asyncio.Semaphore(MAX_WORKERS)
 
+# Global VPN rotasyon event'i
+VPN_ROTATION_EVENT = asyncio.Event()
+
 class RobotsCrawler:
     def __init__(self):
         self.wordpress_detector = WordPressDetector()
@@ -43,6 +46,25 @@ class RobotsCrawler:
             chunks.append(chunk)
         logger.info(f"{len(chunks)} chunk oluşturuldu")
         return chunks
+    
+    async def handle_403_error(self, worker_id: int):
+        """403 hatası durumunda global VPN rotasyonu"""
+        logger.warning(f"Worker {worker_id}: 403 hatası tespit edildi, global VPN rotasyonu başlatılıyor...")
+        
+        # Tüm worker'ları durdur
+        VPN_ROTATION_EVENT.set()
+        
+        # VPN değiştir
+        success = await self.vpn_manager.rotate_vpn_on_403()
+        if success:
+            logger.info(f"Worker {worker_id}: VPN değiştirildi, işlem devam ediyor...")
+            # Kısa bekleme
+            await asyncio.sleep(5.0)
+        else:
+            logger.error(f"Worker {worker_id}: VPN değiştirme başarısız")
+        
+        # Event'i temizle
+        VPN_ROTATION_EVENT.clear()
     
     async def process_chunk(self, chunk: List[str], worker_id: int) -> List[str]:
         """Tek chunk'ı işle"""
@@ -112,15 +134,8 @@ class RobotsCrawler:
                     except Exception as e:
                         error_msg = str(e).lower()
                         if "403" in error_msg or "forbidden" in error_msg:
-                            logger.warning(f"403 hatası tespit edildi, VPN değiştiriliyor...")
-                            # VPN değiştir
-                            success = await self.vpn_manager.rotate_vpn_on_403()
-                            if success:
-                                logger.info("VPN değiştirildi, devam ediliyor...")
-                                # Kısa bekleme
-                                await asyncio.sleep(5.0)
-                            else:
-                                logger.error("VPN değiştirme başarısız")
+                            # Global VPN rotasyonu
+                            await self.handle_403_error(worker_id)
                         else:
                             logger.error(f"Batch işleme hatası: {e}")
                 

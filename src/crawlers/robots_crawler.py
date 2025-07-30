@@ -135,8 +135,8 @@ class RobotsCrawler:
                         else:
                             logger.info(f"Worker {worker_id}: Batch {batch_num} tamamlandı - WordPress bulunamadı")
                         
-                        # Batch'ler arası kısa bekleme
-                        await asyncio.sleep(2.0)
+                        # Batch'ler arası bekleme (yarım saniye)
+                        await asyncio.sleep(0.5)
                         
                     except Exception as e:
                         error_msg = str(e).lower()

@@ -15,14 +15,14 @@ ROBOTSTXT_PATHS_FILE = PROJECT_ROOT / "robotstxt.paths (1)"  # Tam ölçekli ça
 WORDPRESS_DOMAINS_FILE = RESULTS_DIR / "wordpress_domains.txt"
 
 # Worker ayarları
-MAX_WORKERS = 5  # Optimize edilmiş worker sayısı
-CHUNK_SIZE = 200  # Her worker'ın işleyeceği path sayısı
-BATCH_SIZE = 20  # Her seferde indirilecek dosya sayısı
+MAX_WORKERS = 5  # VPN rotasyon için 5 worker
+CHUNK_SIZE = 100   # Orta boyut chunk'lar
+BATCH_SIZE = 10    # Orta boyut batch'ler
 
 # HTTP ayarları
-REQUEST_TIMEOUT = 30
-MAX_RETRIES = 3
-RETRY_DELAY = 1
+REQUEST_TIMEOUT = 60  # Normal timeout
+MAX_RETRIES = 3      # Normal retry
+RETRY_DELAY = 2      # Normal retry delay
 
 # CommonCrawl base URL
 COMMONCRAWL_BASE_URL = "https://data.commoncrawl.org/"

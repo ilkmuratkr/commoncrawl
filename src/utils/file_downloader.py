@@ -27,9 +27,18 @@ class FileDownloader:
             enable_cleanup_closed=True,
             force_close=True  # Bağlantıları zorla kapat
         )
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Referer': 'https://commoncrawl.org/',
+        }
         self.session = aiohttp.ClientSession(
             timeout=timeout,
-            connector=connector
+            connector=connector,
+            headers=headers
         )
         return self
         
@@ -71,8 +80,7 @@ class FileDownloader:
     
     async def download_batch(self, paths: List[str]) -> List[Tuple[str, Optional[str]]]:
         """Birden fazla dosyayı paralel indir"""
-        # Semaphore ile eşzamanlı bağlantı sayısını sınırla
-        semaphore = asyncio.Semaphore(5)  # Maksimum 5 eşzamanlı bağlantı
+        semaphore = asyncio.Semaphore(1)  # Rate limiting için tek bağlantı
         
         async def download_with_semaphore(path: str):
             async with semaphore:

@@ -230,7 +230,9 @@ class VPNManager:
         try:
             # Split tunneling config dosyasını kullan
             base_name = vpn_config.replace('.conf', '')
-            split_config_path = os.path.join(VPN_CONFIG_DIR, f"{base_name}_split.conf")
+            # Interface adı sadece harf, rakam ve tire içerebilir
+            interface_name = base_name.replace('_', '-').replace('split', 'st')
+            split_config_path = os.path.join(VPN_CONFIG_DIR, f"{interface_name}.conf")
             
             # Önce wg-quick down ile dene
             result = await asyncio.wait_for(
@@ -254,7 +256,7 @@ class VPNManager:
                 )
             
             # Interface adını çıkar (uzantısız)
-            interface_name = base_name + "_split"
+            # interface_name = base_name + "_split" # Bu satır artık gereksiz
             
             # Manuel olarak interface'i sil
             try:
@@ -329,13 +331,17 @@ class VPNManager:
                 else:
                     new_lines.append(line)
             
-            # Düzenlenmiş config'i geçici dosyaya yaz (çift split olmasın)
+            # Düzenlenmiş config'i geçici dosyaya yaz (wg-quick uyumlu ad)
             base_name = vpn_config.replace('.conf', '')
-            temp_config_path = os.path.join(VPN_CONFIG_DIR, f"{base_name}_split.conf")
+            # Interface adı sadece harf, rakam ve tire içerebilir
+            interface_name = base_name.replace('_', '-').replace('split', 'st')
+            temp_config_path = os.path.join(VPN_CONFIG_DIR, f"{interface_name}.conf")
+            
             with open(temp_config_path, 'w') as f:
                 f.write('\n'.join(new_lines))
             
             logger.info(f"Split tunneling config oluşturuldu: {temp_config_path}")
+            logger.info(f"Interface adı: {interface_name}")
             logger.info(f"CommonCrawl IP'leri eklendi: {len(commoncrawl_ips)} adet")
             logger.info(f"IP'ler: {', '.join(commoncrawl_ips)}")
             return temp_config_path

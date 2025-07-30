@@ -227,46 +227,62 @@ class VPNManager:
     
     async def _disconnect_vpn(self, vpn_config: str) -> bool:
         """VPN bağlantısını kes"""
-        config_path = os.path.join(VPN_CONFIG_DIR, vpn_config)
-        
         try:
+            # Split tunneling config dosyasını kullan
+            base_name = vpn_config.replace('.conf', '')
+            split_config_path = os.path.join(VPN_CONFIG_DIR, f"{base_name}_split.conf")
+            
             # Önce wg-quick down ile dene
-            result = subprocess.run(
-                ["wg-quick", "down", config_path],
-                capture_output=True,
-                text=True,
-                timeout=10
+            result = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    'wg-quick', 'down', split_config_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                ),
+                timeout=10.0
             )
             
             if result.returncode != 0:
                 # Sudo ile dene
-                result = subprocess.run(
-                    ["sudo", "wg-quick", "down", config_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
+                result = await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        'sudo', 'wg-quick', 'down', split_config_path,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    ),
+                    timeout=10.0
                 )
             
             # Interface adını çıkar (uzantısız)
-            interface_name = vpn_config.replace('.conf', '')
+            interface_name = base_name + "_split"
             
             # Manuel olarak interface'i sil
             try:
-                subprocess.run(
-                    ["sudo", "ip", "link", "delete", "dev", interface_name],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
+                await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        'sudo', 'ip', 'link', 'delete', 'dev', interface_name,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    ),
+                    timeout=5.0
                 )
-            except:
-                pass  # Interface zaten silinmiş olabilir
-                
+            except Exception as e:
+                logger.debug(f"Interface silme hatası (normal): {e}")
+            
+            # Split config dosyasını sil
+            try:
+                if os.path.exists(split_config_path):
+                    os.remove(split_config_path)
+                    logger.debug(f"Split config dosyası silindi: {split_config_path}")
+            except Exception as e:
+                logger.debug(f"Split config silme hatası: {e}")
+            
             logger.info(f"VPN bağlantısı kesildi: {vpn_config}")
             return True
             
         except Exception as e:
-            logger.warning(f"VPN kesme hatası: {e}")
-            return True  # Hata olsa bile True döndür (devam et)
+            logger.error(f"VPN bağlantısı kesme hatası: {e}")
+            return False
     
     async def disconnect_current_vpn(self) -> bool:
         """Mevcut VPN bağlantısını kes"""

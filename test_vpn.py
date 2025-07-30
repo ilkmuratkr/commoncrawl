@@ -72,57 +72,82 @@ async def test_vpn_connection():
     vpn_config = vpn_manager.get_available_vpn()
     print(f"   🔗 Seçilen VPN: {vpn_config}")
     
-    # 4. VPN'e bağlan
-    print("\n4️⃣ VPN bağlantısı kuruluyor...")
-    success = await vpn_manager._connect_vpn(vpn_config)
+    # 4. VPN'e bağlan (5 farklı VPN dene)
+    print("\n4️⃣ VPN bağlantısı kuruluyor (5 farklı VPN deneniyor)...")
     
-    if success:
-        print("   ✅ VPN bağlantısı başarılı!")
+    max_vpn_attempts = 5
+    for attempt in range(max_vpn_attempts):
+        print(f"\n   🔄 VPN Deneme {attempt + 1}/{max_vpn_attempts}")
         
-        # 5. Yeni IP'yi kontrol et
-        print("\n5️⃣ Yeni IP kontrol ediliyor...")
-        try:
-            timeout = aiohttp.ClientTimeout(total=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get('https://httpbin.org/ip') as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        new_ip = data.get('origin', '')
-                        print(f"   📍 Yeni IP: {new_ip}")
-                        
-                        if new_ip != current_ip:
-                            print("   ✅ IP değişti! VPN çalışıyor!")
+        # Yeni VPN seç
+        vpn_config = vpn_manager.get_available_vpn()
+        if not vpn_config:
+            print("   ❌ Kullanılabilir VPN config bulunamadı")
+            break
+            
+        print(f"   🔗 Seçilen VPN: {vpn_config}")
+        
+        # VPN'e bağlan
+        success = await vpn_manager._connect_vpn(vpn_config)
+        
+        if success:
+            print("   ✅ VPN bağlantısı başarılı!")
+            
+            # 5. Yeni IP'yi kontrol et
+            print("\n5️⃣ Yeni IP kontrol ediliyor...")
+            try:
+                timeout = aiohttp.ClientTimeout(total=10)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get('https://api.ipify.org?format=json') as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            new_ip = data.get('ip', '')
+                            print(f"   📍 Yeni IP: {new_ip}")
+                            
+                            if new_ip != current_ip:
+                                print("   ✅ IP değişti! VPN çalışıyor!")
+                                
+                                # 6. CommonCrawl'a test isteği gönder
+                                print("\n6️⃣ CommonCrawl'a test isteği gönderiliyor...")
+                                try:
+                                    test_url = "https://data.commoncrawl.org/crawl-data/CC-MAIN-2025-30/segments/1751905933612.63/robotstxt/CC-MAIN-20250707183638-20250707213638-00000.warc.gz"
+                                    timeout = aiohttp.ClientTimeout(total=10)
+                                    async with aiohttp.ClientSession(timeout=timeout) as session:
+                                        async with session.head(test_url) as response:
+                                            print(f"   📡 HTTP Status: {response.status}")
+                                            if response.status == 200:
+                                                print("   ✅ CommonCrawl erişimi başarılı!")
+                                                print("   🎉 VPN testi başarılı! Bu VPN kullanılabilir.")
+                                                
+                                                # 7. VPN'i kapat
+                                                print("\n7️⃣ VPN bağlantısı kapatılıyor...")
+                                                await vpn_manager._disconnect_vpn(vpn_config)
+                                                print("   ✅ VPN bağlantısı kapatıldı")
+                                                return
+                                            elif response.status == 403:
+                                                print("   ❌ CommonCrawl erişimi engellendi (403)")
+                                            else:
+                                                print(f"   ⚠️ Beklenmeyen durum: {response.status}")
+                                except Exception as e:
+                                    print(f"   ❌ CommonCrawl test hatası: {e}")
+                            else:
+                                print("   ❌ IP değişmedi! VPN çalışmıyor!")
                         else:
-                            print("   ❌ IP değişmedi! VPN çalışmıyor!")
-                    else:
-                        print(f"   ❌ Yeni IP kontrolü başarısız: HTTP {response.status}")
-        except Exception as e:
-            print(f"   ❌ Yeni IP kontrolü hatası: {e}")
+                            print(f"   ❌ Yeni IP kontrolü başarısız: HTTP {response.status}")
+            except Exception as e:
+                print(f"   ❌ Yeni IP kontrolü hatası: {e}")
+            
+            # VPN'i kapat ve devam et
+            await vpn_manager._disconnect_vpn(vpn_config)
+            print("   🔄 VPN kapatıldı, sıradaki deneniyor...")
+            
+        else:
+            print("   ❌ VPN bağlantısı başarısız!")
         
-        # 6. CommonCrawl'a test isteği gönder
-        print("\n6️⃣ CommonCrawl'a test isteği gönderiliyor...")
-        try:
-            test_url = "https://data.commoncrawl.org/crawl-data/CC-MAIN-2025-30/segments/1751905933612.63/robotstxt/CC-MAIN-20250707183638-20250707213638-00000.warc.gz"
-            timeout = aiohttp.ClientTimeout(total=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.head(test_url) as response:
-                    print(f"   📡 HTTP Status: {response.status}")
-                    if response.status == 200:
-                        print("   ✅ CommonCrawl erişimi başarılı!")
-                    elif response.status == 403:
-                        print("   ❌ CommonCrawl erişimi engellendi (403)")
-                    else:
-                        print(f"   ⚠️ Beklenmeyen durum: {response.status}")
-        except Exception as e:
-            print(f"   ❌ CommonCrawl test hatası: {e}")
-        
-        # 7. VPN'i kapat
-        print("\n7️⃣ VPN bağlantısı kapatılıyor...")
-        await vpn_manager._disconnect_vpn(vpn_config)
-        print("   ✅ VPN bağlantısı kapatıldı")
-        
-    else:
-        print("   ❌ VPN bağlantısı başarısız!")
+        # Kısa bekleme
+        await asyncio.sleep(1)
+    
+    print("   ❌ 5 VPN denemesi sonrası başarılı bağlantı bulunamadı!")
     
     print("\n" + "=" * 50)
     print("🏁 VPN Test Tamamlandı!")

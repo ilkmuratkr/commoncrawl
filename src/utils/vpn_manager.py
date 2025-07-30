@@ -313,8 +313,9 @@ class VPNManager:
                 else:
                     new_lines.append(line)
             
-            # Düzenlenmiş config'i geçici dosyaya yaz
-            temp_config_path = config_path.replace('.conf', '_split.conf')
+            # Düzenlenmiş config'i geçici dosyaya yaz (çift split olmasın)
+            base_name = vpn_config.replace('.conf', '')
+            temp_config_path = os.path.join(VPN_CONFIG_DIR, f"{base_name}_split.conf")
             with open(temp_config_path, 'w') as f:
                 f.write('\n'.join(new_lines))
             

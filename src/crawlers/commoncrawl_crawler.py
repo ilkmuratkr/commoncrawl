@@ -160,17 +160,16 @@ class CommonCrawlCrawler:
         
         logger.info("✅ İlk VPN bağlantısı başarılı")
         
-        # Common Crawl index'ini al
-        index_url = "https://data.commoncrawl.org/crawl-data/CC-MAIN-2024-10/warc.paths.gz"
-        
+        # Senin robotstxt.paths dosyasını kullan
         try:
-            logger.info(f"📥 Common Crawl index indiriliyor: {index_url}")
+            logger.info("📥 robotstxt.paths dosyası okunuyor...")
             
-            result = await self.fetch_commoncrawl_data("crawl-data/CC-MAIN-2024-10/warc.paths.gz")
+            # Dosyayı oku
+            with open("robotstxt.paths", "r") as f:
+                content = f.read()
             
-            if result and result['status'] == 200:
-                content = result['content']
-                logger.info("✅ Index başarıyla indirildi")
+            if content:
+                logger.info("✅ robotstxt.paths dosyası okundu")
                 
                 # İlk 100 satırı işle (test için)
                 lines = content.strip().split('\n')[:100]
@@ -194,7 +193,7 @@ class CommonCrawlCrawler:
                 logger.info(f"✅ İşlem tamamlandı! {processed_count} dosya işlendi")
                 
             else:
-                logger.error(f"❌ Index indirme hatası")
+                logger.error(f"❌ robotstxt.paths dosyası okunamadı")
                 
         except Exception as e:
             logger.error(f"❌ Crawler hatası: {e}", exc_info=True)

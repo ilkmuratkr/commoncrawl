@@ -200,11 +200,11 @@ class CommonCrawlCrawler:
             raise
 
     async def process_warc_file(self, warc_path, wordpress_detector):
-        """WARC dosyasını indir ve WordPress domain'leri tespit et"""
+        """Robots.txt WARC dosyasını indir ve WordPress domain'leri tespit et"""
         try:
             # WARC dosyasını indir
             warc_url = f"https://data.commoncrawl.org/{warc_path}"
-            logger.info(f"📥 WARC dosyası indiriliyor: {warc_url}")
+            logger.info(f"📥 Robots.txt WARC dosyası indiriliyor: {warc_url}")
             
             # WARC dosyaları için binary okuma
             result = await self.fetch_warc_file(warc_path)
@@ -213,10 +213,16 @@ class CommonCrawlCrawler:
                 # Binary içeriği text'e çevir
                 content = result['content']
                 
-                # WordPress domain'leri ara
-                wordpress_detector.process_chunk(content)
+                # Robots.txt içeriğinden WordPress domain'leri ara
+                domains = wordpress_detector.extract_domains_from_robots_content(content)
                 
-                logger.info(f"✅ WARC dosyası işlendi: {warc_path}")
+                if domains:
+                    # Bulunan domain'leri ekle
+                    wordpress_detector.domain_manager.add_domains(domains)
+                    for domain in domains:
+                        logger.info(f"WordPress domain bulundu: {domain}")
+                
+                logger.info(f"✅ Robots.txt WARC dosyası işlendi: {warc_path}")
                 
             elif result and result['status'] == 403:
                 logger.warning(f"⚠️ 403 hatası: {warc_path}")

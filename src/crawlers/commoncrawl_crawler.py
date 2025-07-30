@@ -162,14 +162,14 @@ class CommonCrawlCrawler:
         
         # Senin robotstxt.paths dosyasını kullan
         try:
-            logger.info("📥 robotstxt.paths dosyası okunuyor...")
+            logger.info("📥 robotstxt.paths (1) dosyası okunuyor...")
             
             # Dosyayı oku
-            with open("robotstxt.paths", "r") as f:
+            with open("robotstxt.paths (1)", "r") as f:
                 content = f.read()
             
             if content:
-                logger.info("✅ robotstxt.paths dosyası okundu")
+                logger.info("✅ robotstxt.paths (1) dosyası okundu")
                 
                 # İlk 100 satırı işle (test için)
                 lines = content.strip().split('\n')[:100]
@@ -193,7 +193,7 @@ class CommonCrawlCrawler:
                 logger.info(f"✅ İşlem tamamlandı! {processed_count} dosya işlendi")
                 
             else:
-                logger.error(f"❌ robotstxt.paths dosyası okunamadı")
+                logger.error(f"❌ robotstxt.paths (1) dosyası okunamadı")
                 
         except Exception as e:
             logger.error(f"❌ Crawler hatası: {e}", exc_info=True)

@@ -152,55 +152,58 @@ class VPNManager:
             return False
     
     async def _connect_vpn(self, vpn_config: str) -> bool:
-        """VPN bağlantısı kur (normal bağlantı)"""
+        """VPN bağlantısı kur (split tunneling ile)"""
         config_path = os.path.join(VPN_CONFIG_DIR, vpn_config)
         
         if not os.path.exists(config_path):
             logger.error(f"VPN config dosyası bulunamadı: {config_path}")
             return False
         
+        # Split tunneling config'i oluştur
+        split_config_path = self._setup_split_tunneling(vpn_config)
+        
         # Dosya izinlerini düzelt
         try:
-            os.chmod(config_path, 0o600)
+            os.chmod(split_config_path, 0o600)
         except Exception as e:
             logger.warning(f"Dosya izinleri düzeltilemedi: {e}")
         
         try:
             # Önce sudo olmadan dene
-            logger.debug(f"VPN bağlantısı deneniyor (sudo olmadan): {vpn_config}")
+            logger.debug(f"Split tunneling VPN bağlantısı deneniyor (sudo olmadan): {vpn_config}")
             result = subprocess.run(
-                ["wg-quick", "up", config_path],
+                ["wg-quick", "up", split_config_path],
                 capture_output=True,
                 text=True,
                 timeout=5
             )
             
             if result.returncode == 0:
-                logger.info(f"VPN bağlantısı başarılı: {vpn_config}")
+                logger.info(f"Split tunneling VPN bağlantısı başarılı: {vpn_config}")
                 return True
             else:
                 # Sudo ile dene - password soracak
-                logger.info(f"VPN bağlantısı için sudo password gerekli: {vpn_config}")
+                logger.info(f"Split tunneling VPN bağlantısı için sudo password gerekli: {vpn_config}")
                 result = subprocess.run(
-                    ["sudo", "wg-quick", "up", config_path],
+                    ["sudo", "wg-quick", "up", split_config_path],
                     capture_output=True,
                     text=True,
                     timeout=VPN_CONNECTION_TIMEOUT
                 )
                 
                 if result.returncode == 0:
-                    logger.info(f"VPN bağlantısı başarılı (sudo ile): {vpn_config}")
+                    logger.info(f"Split tunneling VPN bağlantısı başarılı (sudo ile): {vpn_config}")
                     return True
                 else:
-                    logger.error(f"VPN bağlantı hatası: {vpn_config}")
+                    logger.error(f"Split tunneling VPN bağlantı hatası: {vpn_config}")
                     logger.error(f"Hata: {result.stderr}")
                     return False
                     
         except subprocess.TimeoutExpired:
-            logger.error(f"VPN bağlantı timeout: {vpn_config}")
+            logger.error(f"Split tunneling VPN bağlantı timeout: {vpn_config}")
             return False
         except Exception as e:
-            logger.error(f"VPN bağlantı hatası: {e}")
+            logger.error(f"Split tunneling VPN bağlantı hatası: {e}")
             return False
     
     async def _disconnect_vpn(self, vpn_config: str) -> bool:
@@ -259,8 +262,8 @@ class VPNManager:
         await self.disconnect_current_vpn()
         logger.info("VPN Manager temizlendi") 
 
-    def _setup_split_tunneling(self, vpn_config: str) -> bool:
-        """Split tunneling için VPN config'i düzenle"""
+    def _setup_split_tunneling(self, vpn_config: str) -> str:
+        """Split tunneling için VPN config'i düzenle - sadece CommonCrawl IP'leri"""
         config_path = os.path.join(VPN_CONFIG_DIR, vpn_config)
         
         try:
@@ -268,12 +271,13 @@ class VPNManager:
             with open(config_path, 'r') as f:
                 config_content = f.read()
             
-            # Split tunneling için AllowedIPs'i düzenle
             # Sadece CommonCrawl IP'lerini ekle
             commoncrawl_ips = [
                 "52.84.0.0/15",  # CloudFront IP range
                 "13.32.0.0/15",  # CloudFront IP range
                 "13.35.0.0/16",  # CloudFront IP range
+                "54.230.0.0/15", # CloudFront IP range
+                "54.240.0.0/15", # CloudFront IP range
             ]
             
             # AllowedIPs satırını bul ve değiştir

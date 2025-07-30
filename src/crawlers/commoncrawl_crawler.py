@@ -86,7 +86,7 @@ class CommonCrawlCrawler:
             logger.info(f"✅ Başarılı yanıt: {url} (Status: {status})")
             try:
                 # Gzip sıkıştırılmış dosyalar için binary okuma
-                if 'gzip' in response.headers.get('content-encoding', '').lower():
+                if 'gzip' in response.headers.get('content-encoding', '').lower() or url.endswith('.gz'):
                     content = await response.read()
                     import gzip
                     content = gzip.decompress(content).decode('utf-8')

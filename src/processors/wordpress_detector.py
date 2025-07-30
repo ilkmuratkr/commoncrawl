@@ -80,9 +80,10 @@ class WordPressDetector:
                 
                 # WordPress pattern kontrolü
                 elif current_domain and any(pattern in line for pattern in WORDPRESS_PATTERNS):
-                    domains.append(current_domain)
-                    logger.info(f"WordPress pattern bulundu: {current_domain} - {line[:50]}...")
-                    break  # Bir pattern bulunduysa yeterli
+                    if current_domain not in domains:  # Tekrar ekleme
+                        domains.append(current_domain)
+                        logger.info(f"WordPress pattern bulundu: {current_domain} - {line[:50]}...")
+                    # break kaldırıldı - tüm pattern'leri ara
             
             # DEBUG loglarını kaldırdım
                 

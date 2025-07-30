@@ -171,8 +171,8 @@ class CommonCrawlCrawler:
             if content:
                 logger.info("✅ robotstxt.paths (1) dosyası okundu")
                 
-                # İlk 100 satırı işle (test için)
-                lines = content.strip().split('\n')[:100]
+                # Tüm satırları işle
+                lines = content.strip().split('\n')
                 logger.info(f"📊 {len(lines)} satır işlenecek")
                 
                 processed_count = 0

@@ -141,6 +141,87 @@ class CommonCrawlCrawler:
         url = f"https://data.commoncrawl.org/{path}"
         return await self.fetch_with_vpn_rotation(url, method="HEAD")
 
+    async def run_with_vpn_rotation(self, wordpress_detector):
+        """VPN rotasyonu ile crawler'ı çalıştır"""
+        logger.info("🔄 VPN rotasyonu ile crawler başlatılıyor...")
+        
+        # İlk VPN bağlantısını kur
+        success = await self.vpn_manager.connect_initial_vpn()
+        if not success:
+            logger.error("❌ İlk VPN bağlantısı başarısız!")
+            return
+        
+        logger.info("✅ İlk VPN bağlantısı başarılı")
+        
+        # Common Crawl index'ini al
+        index_url = "https://data.commoncrawl.org/crawl-data/CC-MAIN-2024-10/warc.paths.gz"
+        
+        try:
+            logger.info(f"📥 Common Crawl index indiriliyor: {index_url}")
+            
+            result = await self.fetch_commoncrawl_data("crawl-data/CC-MAIN-2024-10/warc.paths.gz")
+            
+            if result and result['status'] == 200:
+                content = result['content']
+                logger.info("✅ Index başarıyla indirildi")
+                
+                # İlk 100 satırı işle (test için)
+                lines = content.strip().split('\n')[:100]
+                logger.info(f"📊 {len(lines)} satır işlenecek")
+                
+                processed_count = 0
+                for line in lines:
+                    if line.strip():
+                        try:
+                            logger.info(f"🔄 İşleniyor ({processed_count + 1}/{len(lines)}): {line}")
+                            
+                            # WARC dosyasını indir ve işle
+                            await self.process_warc_file(line, wordpress_detector)
+                            
+                            processed_count += 1
+                            
+                        except Exception as e:
+                            logger.error(f"❌ Satır işleme hatası: {e}")
+                            continue
+                
+                logger.info(f"✅ İşlem tamamlandı! {processed_count} dosya işlendi")
+                
+            else:
+                logger.error(f"❌ Index indirme hatası")
+                
+        except Exception as e:
+            logger.error(f"❌ Crawler hatası: {e}", exc_info=True)
+            raise
+
+    async def process_warc_file(self, warc_path, wordpress_detector):
+        """WARC dosyasını indir ve WordPress domain'leri tespit et"""
+        try:
+            # WARC dosyasını indir
+            warc_url = f"https://data.commoncrawl.org/{warc_path}"
+            logger.info(f"📥 WARC dosyası indiriliyor: {warc_url}")
+            
+            result = await self.fetch_commoncrawl_data(warc_path)
+            
+            if result and result['status'] == 200:
+                # Dosyayı işle
+                content = result['content']
+                
+                # WordPress domain'leri ara
+                wordpress_detector.process_chunk(content)
+                
+                logger.info(f"✅ WARC dosyası işlendi: {warc_path}")
+                
+            elif result and result['status'] == 403:
+                logger.warning(f"⚠️ 403 hatası: {warc_path}")
+                # VPN rotasyonu zaten fetch_with_vpn_rotation'da yapılıyor
+                
+            else:
+                logger.error(f"❌ WARC indirme hatası: {warc_path}")
+                
+        except Exception as e:
+            logger.error(f"❌ WARC işleme hatası: {e}")
+            raise
+
 # Test fonksiyonu
 async def test_commoncrawl_crawler():
     """Common Crawl crawler'ını test et"""

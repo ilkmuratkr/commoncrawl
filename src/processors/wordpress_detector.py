@@ -143,4 +143,23 @@ class WordPressDetector:
     
     def get_total_domains(self) -> int:
         """Toplam domain sayısını döndür"""
+        return len(self.domain_manager.domains)
+    
+    def process_chunk(self, content: str):
+        """İçerik chunk'ını işle ve WordPress domain'lerini bul"""
+        try:
+            # WordPress kontrolü
+            if self.detect_wordpress_in_content(content):
+                domains = self.extract_domains_from_robots_content(content)
+                if domains:
+                    # Domain'leri anlık olarak ekle
+                    added_count = self.domain_manager.add_domains(domains)
+                    if added_count > 0:
+                        logger.info(f"WordPress domain bulundu: {domains[0]}")
+                        
+        except Exception as e:
+            logger.error(f"Chunk işleme hatası: {e}")
+    
+    def get_domain_count(self) -> int:
+        """Bulunan domain sayısını döndür"""
         return len(self.domain_manager.domains) 

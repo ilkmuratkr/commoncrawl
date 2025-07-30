@@ -21,13 +21,14 @@ class VPNManager:
         """VPN config dosyalarını yükle"""
         if not os.path.exists(VPN_CONFIG_DIR):
             logger.warning(f"VPN config dizini bulunamadı: {VPN_CONFIG_DIR}")
-            return
+            return []
             
         for file in os.listdir(VPN_CONFIG_DIR):
             if file.endswith('.conf'):
                 self.vpn_configs.append(file)
         
         logger.info(f"{len(self.vpn_configs)} VPN config dosyası yüklendi")
+        return self.vpn_configs
     
     def get_available_vpn(self) -> Optional[str]:
         """Kullanılabilir bir VPN config seç"""

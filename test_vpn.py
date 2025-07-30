@@ -61,7 +61,11 @@ async def test_vpn_connection():
     # 2. VPN config'lerini yükle
     print("\n2️⃣ VPN config'leri yükleniyor...")
     vpn_configs = vpn_manager._load_vpn_configs()
-    print(f"   📁 {len(vpn_configs)} VPN config bulundu")
+    if vpn_configs:
+        print(f"   📁 {len(vpn_configs)} VPN config bulundu")
+    else:
+        print("   ❌ VPN config bulunamadı")
+        return
     
     # 3. İlk VPN'i seç ve bağlan
     print("\n3️⃣ İlk VPN'e bağlanılıyor...")

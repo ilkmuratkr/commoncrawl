@@ -274,8 +274,8 @@ class VPNManager:
         try:
             # Split tunneling config dosyasını kullan
             base_name = vpn_config.replace('.conf', '')
-            # Interface adı sadece harf, rakam ve tire içerebilir
-            interface_name = base_name.replace('_', '-').replace('split', 'st')
+            # Interface adını config dosyası adından çıkar
+            interface_name = f"wg{base_name[-3:]}"
             split_config_path = os.path.join(VPN_CONFIG_DIR, f"{interface_name}.conf")
             
             # Önce wg-quick down ile dene
@@ -298,9 +298,6 @@ class VPNManager:
                     ),
                     timeout=10.0
                 )
-            
-            # Interface adını çıkar (uzantısız)
-            # interface_name = base_name + "_split" # Bu satır artık gereksiz
             
             # Manuel olarak interface'i sil
             try:
@@ -361,6 +358,14 @@ class VPNManager:
                 "3.169.85.63/32",    # data.commoncrawl.org IP
                 # CloudFront IP range'leri (yedek)
                 "3.169.0.0/16",      # CloudFront IP range
+                # Test siteleri IP'leri
+                "54.221.61.107/32",  # httpbin.org IP
+                "34.192.139.201/32", # httpbin.org IP
+                "52.86.149.41/32",   # httpbin.org IP
+                "34.197.172.56/32",  # httpbin.org IP
+                "104.26.13.205/32",  # api.ipify.org IP
+                "172.67.74.152/32",  # api.ipify.org IP
+                "104.26.12.205/32",  # api.ipify.org IP
             ]
             
             # AllowedIPs satırını bul ve değiştir
@@ -375,17 +380,17 @@ class VPNManager:
                 else:
                     new_lines.append(line)
             
-            # Düzenlenmiş config'i geçici dosyaya yaz (wg-quick uyumlu ad)
+            # Benzersiz interface adı oluştur (config dosyası adından)
             base_name = vpn_config.replace('.conf', '')
-            # Interface adı sadece harf, rakam ve tire içerebilir
-            interface_name = base_name.replace('_', '-').replace('split', 'st')
+            # Sadece son 3 karakteri al ve wg ile başlat
+            interface_name = f"wg{base_name[-3:]}"
             temp_config_path = os.path.join(VPN_CONFIG_DIR, f"{interface_name}.conf")
             
             with open(temp_config_path, 'w') as f:
                 f.write('\n'.join(new_lines))
             
             logger.info(f"Split tunneling config oluşturuldu: {temp_config_path}")
-            logger.info(f"Interface adı: {interface_name}")
+            logger.info(f"Benzersiz interface adı: {interface_name}")
             logger.info(f"CommonCrawl IP'leri eklendi: {len(commoncrawl_ips)} adet")
             logger.info(f"IP'ler: {', '.join(commoncrawl_ips)}")
             return temp_config_path

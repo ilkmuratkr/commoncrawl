@@ -94,6 +94,13 @@ class RobotsCrawler:
                     logger.info(f"Worker {worker_id}: Batch {batch_num}/{total_batches} işleniyor ({len(batch)} dosya)")
                     
                     try:
+                        # VPN bağlantısını kontrol et
+                        if worker_id == 0:  # Sadece ilk worker kontrol etsin
+                            vpn_test = await self.vpn_manager.test_vpn_connection()
+                            if not vpn_test:
+                                logger.warning("VPN bağlantısı başarısız, yeniden bağlanılıyor...")
+                                await self.vpn_manager.rotate_vpn_on_403()
+                        
                         # Batch'i indir
                         async with FileDownloader() as downloader:
                             results = await downloader.download_batch(batch)

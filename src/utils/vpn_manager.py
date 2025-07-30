@@ -51,12 +51,19 @@ class VPNManager:
         try:
             async with aiohttp.ClientSession() as session:
                 # IP adresini kontrol et
-                async with session.get('https://httpbin.org/ip', timeout=10) as response:  # 3'ten 10'a çıkardım
+                async with session.get('https://httpbin.org/ip', timeout=10) as response:
                     if response.status == 200:
                         data = await response.json()
                         ip = data.get('origin', '')
                         logger.info(f"VPN IP adresi: {ip}")
-                        return True
+                        
+                        # IP adresini kontrol et - VPN IP'si mi?
+                        if ip and not ip.startswith('35.225.81.214'):  # Sunucu IP'si değilse VPN çalışıyor
+                            logger.info(f"VPN bağlantısı başarılı - IP: {ip}")
+                            return True
+                        else:
+                            logger.warning(f"VPN bağlantısı başarısız - Hala sunucu IP'si: {ip}")
+                            return False
                     else:
                         logger.error(f"IP kontrolü başarısız: {response.status}")
                         return False

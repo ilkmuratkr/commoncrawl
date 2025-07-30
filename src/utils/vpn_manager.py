@@ -421,6 +421,10 @@ class VPNManager:
                 "104.26.13.205/32",  # api.ipify.org IP
                 "172.67.74.152/32",  # api.ipify.org IP
                 "104.26.12.205/32",  # api.ipify.org IP
+                # IP test siteleri
+                "34.195.196.24/32",  # ipinfo.io
+                "104.18.2.5/32",     # ipinfo.io (alternatif)
+                "104.18.3.5/32",     # ipinfo.io (alternatif)
             ]
             
             # AllowedIPs satırını bul ve değiştir, DNS'i kaldır

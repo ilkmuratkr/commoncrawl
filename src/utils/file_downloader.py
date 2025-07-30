@@ -94,10 +94,15 @@ class FileDownloader:
         # Sonuçları işle
         processed_results = []
         success_count = 0
+        has_403_error = False
         
         for i, result in enumerate(results):
             path = paths[i]
             if isinstance(result, Exception):
+                error_msg = str(result).lower()
+                if "403" in error_msg or "forbidden" in error_msg:
+                    has_403_error = True
+                    logger.error(f"403 hatası tespit edildi: {path}")
                 logger.error(f"Task hatası {path}: {result}")
                 processed_results.append((path, None))
             else:
@@ -107,4 +112,9 @@ class FileDownloader:
                 processed_results.append((path, result))
         
         logger.info(f"Batch tamamlandı: {success_count}/{len(paths)} başarılı")
+        
+        # 403 hatası varsa yukarı fırlat
+        if has_403_error:
+            raise Exception("403 Forbidden: Batch'te 403 hatası tespit edildi")
+        
         return processed_results 

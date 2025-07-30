@@ -271,13 +271,22 @@ class VPNManager:
             with open(config_path, 'r') as f:
                 config_content = f.read()
             
-            # Sadece CommonCrawl IP'lerini ekle
+            # CommonCrawl'ın gerçek IP adresleri
             commoncrawl_ips = [
-                "52.84.0.0/15",  # CloudFront IP range
-                "13.32.0.0/15",  # CloudFront IP range
-                "13.35.0.0/16",  # CloudFront IP range
-                "54.230.0.0/15", # CloudFront IP range
-                "54.240.0.0/15", # CloudFront IP range
+                "108.157.60.67/32",   # data.commoncrawl.org IP
+                "108.157.60.44/32",   # data.commoncrawl.org IP
+                "108.157.60.26/32",   # data.commoncrawl.org IP
+                "108.157.60.6/32",    # data.commoncrawl.org IP
+                "3.169.107.40/32",    # CloudFront IP
+                "3.169.107.46/32",    # CloudFront IP
+                "3.169.107.72/32",    # CloudFront IP
+                "3.169.107.49/32",    # CloudFront IP
+                # CloudFront IP range'leri (yedek)
+                "52.84.0.0/15",       # CloudFront IP range
+                "13.32.0.0/15",       # CloudFront IP range
+                "13.35.0.0/16",       # CloudFront IP range
+                "54.230.0.0/15",      # CloudFront IP range
+                "54.240.0.0/15",      # CloudFront IP range
             ]
             
             # AllowedIPs satırını bul ve değiştir
@@ -298,6 +307,7 @@ class VPNManager:
                 f.write('\n'.join(new_lines))
             
             logger.info(f"Split tunneling config oluşturuldu: {temp_config_path}")
+            logger.info(f"CommonCrawl IP'leri eklendi: {len(commoncrawl_ips)} adet")
             return temp_config_path
             
         except Exception as e:

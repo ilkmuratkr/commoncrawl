@@ -51,7 +51,12 @@ class RobotsCrawler:
         try:
             # Chunk başında VPN bağlantısını kontrol et
             if worker_id == 0:  # İlk worker VPN'i başlatsın
-                await self.vpn_manager.connect_initial_vpn()
+                logger.info("VPN bağlantısı kuruluyor ve test ediliyor...")
+                vpn_success = await self.vpn_manager.connect_initial_vpn()
+                if not vpn_success:
+                    logger.error("VPN bağlantısı başarısız! İşlem durduruluyor.")
+                    return domains_found
+                logger.info("VPN bağlantısı başarılı, işlem başlıyor...")
             
             async with GLOBAL_SEMAPHORE:
                 # Chunk'ı batch'lere böl

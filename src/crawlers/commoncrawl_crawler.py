@@ -85,7 +85,14 @@ class CommonCrawlCrawler:
         if status == 200:
             logger.info(f"✅ Başarılı yanıt: {url} (Status: {status})")
             try:
-                content = await response.text()
+                # Gzip sıkıştırılmış dosyalar için binary okuma
+                if 'gzip' in response.headers.get('content-encoding', '').lower():
+                    content = await response.read()
+                    import gzip
+                    content = gzip.decompress(content).decode('utf-8')
+                else:
+                    content = await response.text()
+                
                 return {
                     "status": status,
                     "content": content,

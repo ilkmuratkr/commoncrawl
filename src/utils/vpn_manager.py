@@ -159,46 +159,42 @@ class VPNManager:
             logger.warning(f"Dosya izinleri düzeltilemedi: {e}")
         
         try:
-            # Önce sudo olmadan dene (hızlı)
+            # Önce sudo olmadan dene
             logger.debug(f"VPN bağlantısı deneniyor (sudo olmadan): {vpn_config}")
             result = subprocess.run(
                 ["wg-quick", "up", config_path],
                 capture_output=True,
                 text=True,
-                timeout=5  # Çok kısa timeout
+                timeout=5
             )
             
             if result.returncode == 0:
                 logger.info(f"VPN bağlantısı başarılı: {vpn_config}")
                 return True
             else:
-                logger.debug(f"Sudo olmadan başarısız, sudo ile deneniyor: {vpn_config}")
-                # Sudo ile dene ama password bekleme
+                # Sudo ile dene - password soracak
+                logger.info(f"VPN bağlantısı için sudo password gerekli: {vpn_config}")
                 result = subprocess.run(
-                    ["sudo", "-n", "wg-quick", "up", config_path],  # -n flag'i password beklemez
+                    ["sudo", "wg-quick", "up", config_path],
                     capture_output=True,
                     text=True,
-                    timeout=5  # Çok kısa timeout
+                    timeout=VPN_CONNECTION_TIMEOUT
                 )
                 
                 if result.returncode == 0:
                     logger.info(f"VPN bağlantısı başarılı (sudo ile): {vpn_config}")
                     return True
                 else:
-                    logger.warning(f"VPN bağlantı hatası: {vpn_config}")
-                    logger.warning(f"Hata: {result.stderr}")
-                    # VPN olmadan devam et
-                    logger.info("VPN olmadan devam ediliyor...")
-                    return True  # True döndür ki devam etsin
+                    logger.error(f"VPN bağlantı hatası: {vpn_config}")
+                    logger.error(f"Hata: {result.stderr}")
+                    return False
                     
         except subprocess.TimeoutExpired:
             logger.error(f"VPN bağlantı timeout: {vpn_config}")
-            logger.info("VPN olmadan devam ediliyor...")
-            return True  # True döndür ki devam etsin
+            return False
         except Exception as e:
             logger.error(f"VPN bağlantı hatası: {e}")
-            logger.info("VPN olmadan devam ediliyor...")
-            return True  # True döndür ki devam etsin
+            return False
     
     async def _disconnect_vpn(self, vpn_config: str) -> bool:
         """VPN bağlantısını kes"""

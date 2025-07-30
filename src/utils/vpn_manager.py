@@ -288,6 +288,12 @@ class VPNManager:
                     self.current_vpn = vpn_config
                     return True
                 
+                # Route zaten mevcut hatası
+                if "File exists" in stderr_text:
+                    logger.info(f"✅ VPN route'ları zaten mevcut: {vpn_config}")
+                    self.current_vpn = vpn_config
+                    return True
+                
                 logger.error(f"❌ VPN bağlantısı başarısız: {vpn_config}")
                 logger.error(f"stdout: {stdout.decode()}")
                 logger.error(f"stderr: {stderr_text}")

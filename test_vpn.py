@@ -58,7 +58,7 @@ async def test_vpn_connection():
         print("   ❌ IP kontrolü başarısız")
         return
     
-    # 2. VPN config'lerini yükle
+    # 2. VPN config'leri yükleniyor...
     print("\n2️⃣ VPN config'leri yükleniyor...")
     vpn_configs = vpn_manager._load_vpn_configs()
     if vpn_configs:
@@ -66,6 +66,10 @@ async def test_vpn_connection():
     else:
         print("   ❌ VPN config bulunamadı")
         return
+    
+    # 2.5. Mevcut interface'leri temizle
+    print("\n2️⃣.5️⃣ Mevcut WireGuard interface'leri temizleniyor...")
+    await vpn_manager.cleanup_existing_interfaces()
     
     # 3. İlk VPN'i seç ve bağlan
     print("\n3️⃣ İlk VPN'e bağlanılıyor...")

@@ -17,6 +17,50 @@ class VPNManager:
         self.global_vpn_lock = asyncio.Lock()
         self._load_vpn_configs()
         
+    async def cleanup_existing_interfaces(self):
+        """Mevcut WireGuard interface'lerini temizle"""
+        try:
+            logger.info("Mevcut WireGuard interface'leri temizleniyor...")
+            
+            # ip link show komutu ile mevcut interface'leri listele
+            result = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    'ip', 'link', 'show',
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                ),
+                timeout=5.0
+            )
+            
+            if result.returncode == 0:
+                stdout, _ = await result.communicate()
+                output = stdout.decode()
+                
+                # WireGuard interface'lerini bul (wg* veya utun*)
+                import re
+                wg_interfaces = re.findall(r'(\d+):\s+(wg[^:]+|utun\d+):', output)
+                
+                for _, interface_name in wg_interfaces:
+                    logger.info(f"Interface temizleniyor: {interface_name}")
+                    try:
+                        # Interface'i sil
+                        await asyncio.wait_for(
+                            asyncio.create_subprocess_exec(
+                                'sudo', 'ip', 'link', 'delete', 'dev', interface_name,
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE
+                            ),
+                            timeout=5.0
+                        )
+                        logger.info(f"✅ Interface silindi: {interface_name}")
+                    except Exception as e:
+                        logger.debug(f"Interface silme hatası (normal): {e}")
+            
+            logger.info("Interface temizleme tamamlandı")
+            
+        except Exception as e:
+            logger.error(f"Interface temizleme hatası: {e}")
+    
     def _load_vpn_configs(self):
         """VPN config dosyalarını yükle"""
         if not os.path.exists(VPN_CONFIG_DIR):
@@ -24,7 +68,7 @@ class VPNManager:
             return []
             
         for file in os.listdir(VPN_CONFIG_DIR):
-            if file.endswith('.conf'):
+            if file.endswith('.conf') and not file.endswith('_split.conf') and not '_split' in file:
                 self.vpn_configs.append(file)
         
         logger.info(f"{len(self.vpn_configs)} VPN config dosyası yüklendi")

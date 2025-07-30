@@ -42,7 +42,7 @@ async def main():
         # VPN entegrasyonu ile crawler başlat
         async with CommonCrawlCrawler() as crawler:
             # WordPress detector'ı başlat
-            wordpress_detector = WordPressDetector(WORDPRESS_DOMAINS_FILE)
+            wordpress_detector = WordPressDetector()
             
             # Crawler'ı çalıştır
             await crawler.run_with_vpn_rotation(wordpress_detector)

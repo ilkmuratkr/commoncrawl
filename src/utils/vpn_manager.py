@@ -47,28 +47,31 @@ class VPNManager:
         return None
     
     async def test_vpn_connection(self) -> bool:
-        """VPN bağlantısını test et"""
+        """VPN bağlantısını test et - gerçek IP'yi kontrol et"""
         try:
-            async with aiohttp.ClientSession() as session:
-                # IP adresini kontrol et
-                async with session.get('https://httpbin.org/ip', timeout=10) as response:
+            logger.info("VPN bağlantısı test ediliyor...")
+            
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get('https://httpbin.org/ip') as response:
                     if response.status == 200:
                         data = await response.json()
-                        ip = data.get('origin', '')
-                        logger.info(f"VPN IP adresi: {ip}")
+                        current_ip = data.get('origin', '')
+                        logger.info(f"VPN Test - Mevcut IP: {current_ip}")
                         
-                        # IP adresini kontrol et - VPN IP'si mi?
-                        if ip and not ip.startswith('35.225.81.214'):  # Sunucu IP'si değilse VPN çalışıyor
-                            logger.info(f"VPN bağlantısı başarılı - IP: {ip}")
+                        # Sunucunun orijinal IP'si ile karşılaştır
+                        if current_ip != "35.225.81.214":
+                            logger.info(f"✅ VPN bağlantısı başarılı - IP değişti: {current_ip}")
                             return True
                         else:
-                            logger.warning(f"VPN bağlantısı başarısız - Hala sunucu IP'si: {ip}")
+                            logger.warning(f"❌ VPN bağlantısı başarısız - IP değişmedi: {current_ip}")
                             return False
                     else:
-                        logger.error(f"IP kontrolü başarısız: {response.status}")
+                        logger.error(f"VPN test hatası - HTTP {response.status}")
                         return False
+                        
         except Exception as e:
-            logger.error(f"VPN bağlantı testi başarısız: {e}")
+            logger.error(f"VPN test hatası: {e}")
             return False
     
     async def connect_initial_vpn(self) -> bool:
@@ -152,58 +155,73 @@ class VPNManager:
             return False
     
     async def _connect_vpn(self, vpn_config: str) -> bool:
-        """VPN bağlantısı kur (split tunneling ile)"""
-        config_path = os.path.join(VPN_CONFIG_DIR, vpn_config)
-        
-        if not os.path.exists(config_path):
-            logger.error(f"VPN config dosyası bulunamadı: {config_path}")
-            return False
-        
-        # Split tunneling config'i oluştur
-        split_config_path = self._setup_split_tunneling(vpn_config)
-        
-        # Dosya izinlerini düzelt
+        """VPN'e bağlan ve test et"""
         try:
-            os.chmod(split_config_path, 0o600)
-        except Exception as e:
-            logger.warning(f"Dosya izinleri düzeltilemedi: {e}")
-        
-        try:
-            # Önce sudo olmadan dene
-            logger.debug(f"Split tunneling VPN bağlantısı deneniyor (sudo olmadan): {vpn_config}")
-            result = subprocess.run(
-                ["wg-quick", "up", split_config_path],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            config_path = os.path.join(VPN_CONFIG_DIR, vpn_config)
             
-            if result.returncode == 0:
-                logger.info(f"Split tunneling VPN bağlantısı başarılı: {vpn_config}")
-                return True
-            else:
-                # Sudo ile dene - password soracak
-                logger.info(f"Split tunneling VPN bağlantısı için sudo password gerekli: {vpn_config}")
-                result = subprocess.run(
-                    ["sudo", "wg-quick", "up", split_config_path],
-                    capture_output=True,
-                    text=True,
+            # Dosya izinlerini ayarla
+            os.chmod(config_path, 0o600)
+            
+            # Split tunneling config oluştur
+            split_config_path = self._setup_split_tunneling(vpn_config)
+            
+            logger.info(f"Split tunneling VPN bağlantısı deneniyor: {vpn_config}")
+            
+            # Önce sudo olmadan dene
+            try:
+                result = await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        'wg-quick', 'up', split_config_path,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    ),
+                    timeout=5.0
+                )
+                
+                if result.returncode == 0:
+                    logger.info(f"✅ VPN bağlantısı başarılı (sudo olmadan): {vpn_config}")
+                else:
+                    logger.warning(f"VPN bağlantısı başarısız (sudo olmadan), sudo ile deneniyor...")
+                    raise Exception("sudo gerekli")
+                    
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.info(f"sudo ile VPN bağlantısı deneniyor: {vpn_config}")
+                
+                # sudo ile dene
+                result = await asyncio.wait_for(
+                    asyncio.create_subprocess_exec(
+                        'sudo', 'wg-quick', 'up', split_config_path,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    ),
                     timeout=VPN_CONNECTION_TIMEOUT
                 )
                 
                 if result.returncode == 0:
-                    logger.info(f"Split tunneling VPN bağlantısı başarılı (sudo ile): {vpn_config}")
-                    return True
+                    logger.info(f"✅ Split tunneling VPN bağlantısı başarılı: {vpn_config}")
                 else:
-                    logger.error(f"Split tunneling VPN bağlantı hatası: {vpn_config}")
-                    logger.error(f"Hata: {result.stderr}")
+                    stdout, stderr = await result.communicate()
+                    logger.error(f"❌ VPN bağlantısı başarısız: {vpn_config}")
+                    logger.error(f"stdout: {stdout.decode()}")
+                    logger.error(f"stderr: {stderr.decode()}")
                     return False
-                    
-        except subprocess.TimeoutExpired:
-            logger.error(f"Split tunneling VPN bağlantı timeout: {vpn_config}")
-            return False
+            
+            # VPN bağlantısını test et
+            await asyncio.sleep(2)  # Bağlantının kurulması için bekle
+            test_result = await self.test_vpn_connection()
+            
+            if test_result:
+                self.current_vpn = vpn_config
+                logger.info(f"✅ VPN bağlantısı ve test başarılı: {vpn_config}")
+                return True
+            else:
+                logger.error(f"❌ VPN bağlantısı başarısız - test geçemedi: {vpn_config}")
+                # Bağlantıyı kapat
+                await self._disconnect_vpn(vpn_config)
+                return False
+                
         except Exception as e:
-            logger.error(f"Split tunneling VPN bağlantı hatası: {e}")
+            logger.error(f"VPN bağlantı hatası: {e}")
             return False
     
     async def _disconnect_vpn(self, vpn_config: str) -> bool:

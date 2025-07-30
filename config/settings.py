@@ -14,10 +14,10 @@ RESULTS_DIR = DATA_DIR / "results"
 ROBOTSTXT_PATHS_FILE = PROJECT_ROOT / "robotstxt.paths (1)"  # Tam ölçekli çalışma
 WORDPRESS_DOMAINS_FILE = RESULTS_DIR / "wordpress_domains.txt"
 
-# Worker ayarları
-MAX_WORKERS = 5  # VPN rotasyon için 5 worker
-CHUNK_SIZE = 100   # Orta boyut chunk'lar
-BATCH_SIZE = 10    # Orta boyut batch'ler
+# Crawler ayarları
+MAX_WORKERS = 1  # Tek worker kullanacağız
+CHUNK_SIZE = 50  # Daha küçük chunk'lar
+BATCH_SIZE = 5   # Daha küçük batch'ler
 
 # HTTP ayarları
 REQUEST_TIMEOUT = 60  # Normal timeout
@@ -35,6 +35,11 @@ WORDPRESS_PATTERNS = [
     "wp-admin",
     "wordpress"
 ]
+
+# VPN ayarları
+VPN_CONFIG_DIR = "mullvad_wireguard_macos_all_all"
+VPN_ROTATION_ON_403 = True  # 403 hatası alınca VPN değiştir
+VPN_CONNECTION_TIMEOUT = 30  # VPN bağlantı timeout'u
 
 # Dizinleri oluştur
 for directory in [DATA_DIR, RAW_DIR, PROCESSED_DIR, RESULTS_DIR]:

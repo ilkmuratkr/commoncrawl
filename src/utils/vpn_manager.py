@@ -1,97 +1,197 @@
-import asyncio
-import subprocess
 import os
-import logging
 import random
-from pathlib import Path
-from typing import List, Optional
+import subprocess
+import asyncio
+import logging
+from typing import Optional, List
+from config.settings import VPN_CONFIG_DIR, VPN_ROTATION_ON_403, VPN_CONNECTION_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
 class VPNManager:
-    def __init__(self, vpn_configs_dir: str = "mullvad_wireguard_macos_all_all"):
-        self.vpn_configs_dir = Path(vpn_configs_dir)
-        self.vpn_configs = self._load_vpn_configs()
-        self.current_vpn_index = 0
-        self.active_connections = {}  # worker_id -> vpn_config
+    def __init__(self):
+        self.vpn_configs = []
+        self.current_vpn = None
+        self.used_vpns = set()
+        self.global_vpn_lock = asyncio.Lock()
+        self._load_vpn_configs()
         
-    def _load_vpn_configs(self) -> List[str]:
+    def _load_vpn_configs(self):
         """VPN config dosyalarını yükle"""
-        configs = []
-        if self.vpn_configs_dir.exists():
-            for config_file in self.vpn_configs_dir.glob("*.conf"):
-                configs.append(str(config_file))
-        logger.info(f"Toplam {len(configs)} VPN config yüklendi")
-        return configs
-    
-    def get_next_vpn_config(self, worker_id: int) -> Optional[str]:
-        """Worker için sıradaki VPN config'ini al"""
-        if not self.vpn_configs:
-            logger.warning("VPN config bulunamadı!")
-            return None
+        if not os.path.exists(VPN_CONFIG_DIR):
+            logger.warning(f"VPN config dizini bulunamadı: {VPN_CONFIG_DIR}")
+            return
             
-        # Worker için rastgele VPN seç
-        vpn_config = random.choice(self.vpn_configs)
-        self.active_connections[worker_id] = vpn_config
-        logger.info(f"Worker {worker_id} için VPN seçildi: {os.path.basename(vpn_config)}")
-        return vpn_config
-    
-    def rotate_vpn_for_worker(self, worker_id: int) -> Optional[str]:
-        """Worker için VPN'i değiştir (403 hatası durumunda)"""
-        if worker_id in self.active_connections:
-            # Mevcut VPN'i kaldır
-            current_vpn = self.active_connections[worker_id]
-            self.vpn_configs.remove(current_vpn)
-            logger.info(f"Worker {worker_id} için VPN değiştiriliyor: {os.path.basename(current_vpn)}")
+        for file in os.listdir(VPN_CONFIG_DIR):
+            if file.endswith('.conf'):
+                self.vpn_configs.append(file)
         
-        # Yeni VPN seç
-        return self.get_next_vpn_config(worker_id)
+        logger.info(f"{len(self.vpn_configs)} VPN config dosyası yüklendi")
     
-    async def connect_vpn(self, worker_id: int, vpn_config: str) -> bool:
-        """VPN'e bağlan"""
-        try:
-            # WireGuard bağlantısını başlat (sudo password olmadan)
-            cmd = ["wg-quick", "up", vpn_config]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    def get_available_vpn(self) -> Optional[str]:
+        """Kullanılabilir bir VPN config seç"""
+        available = [vpn for vpn in self.vpn_configs if vpn not in self.used_vpns]
+        
+        if not available:
+            # Tüm VPN'ler kullanıldıysa, used_vpns'i temizle
+            self.used_vpns.clear()
+            available = self.vpn_configs
+            logger.info("Tüm VPN'ler kullanıldı, liste sıfırlandı")
+        
+        if available:
+            vpn = random.choice(available)
+            self.used_vpns.add(vpn)
+            return vpn
+        
+        return None
+    
+    async def connect_initial_vpn(self) -> bool:
+        """İlk VPN bağlantısını kur"""
+        async with self.global_vpn_lock:
+            if self.current_vpn:
+                logger.info("VPN zaten bağlı, yeni bağlantı kurulmuyor")
+                return True
+                
+            vpn_config = self.get_available_vpn()
+            if not vpn_config:
+                logger.error("Kullanılabilir VPN config bulunamadı")
+                return False
             
-            if result.returncode == 0:
-                logger.info(f"Worker {worker_id} VPN'e bağlandı: {os.path.basename(vpn_config)}")
+            success = await self._connect_vpn(vpn_config)
+            if success:
+                self.current_vpn = vpn_config
+                logger.info(f"İlk VPN bağlantısı kuruldu: {vpn_config}")
+            return success
+    
+    async def rotate_vpn_on_403(self) -> bool:
+        """403 hatası alınca VPN değiştir"""
+        if not VPN_ROTATION_ON_403:
+            logger.info("VPN rotasyon devre dışı")
+            return False
+            
+        async with self.global_vpn_lock:
+            # Mevcut VPN'i kes
+            if self.current_vpn:
+                await self._disconnect_vpn(self.current_vpn)
+                logger.info(f"Mevcut VPN kesildi: {self.current_vpn}")
+            
+            # Yeni VPN seç ve bağlan
+            new_vpn = self.get_available_vpn()
+            if not new_vpn:
+                logger.error("Yeni VPN config bulunamadı")
+                return False
+            
+            success = await self._connect_vpn(new_vpn)
+            if success:
+                self.current_vpn = new_vpn
+                logger.info(f"VPN değiştirildi: {new_vpn}")
                 return True
             else:
-                logger.warning(f"Worker {worker_id} VPN bağlantı hatası (sudo gerekli): {result.stderr}")
-                # VPN olmadan devam et
-                return True
-                
-        except Exception as e:
-            logger.warning(f"Worker {worker_id} VPN bağlantı hatası: {e}")
-            # VPN olmadan devam et
-            return True
+                logger.error(f"Yeni VPN bağlantısı başarısız: {new_vpn}")
+                return False
     
-    async def disconnect_vpn(self, worker_id: int) -> bool:
-        """VPN bağlantısını kes"""
+    async def _connect_vpn(self, vpn_config: str) -> bool:
+        """VPN bağlantısı kur"""
+        config_path = os.path.join(VPN_CONFIG_DIR, vpn_config)
+        
+        if not os.path.exists(config_path):
+            logger.error(f"VPN config dosyası bulunamadı: {config_path}")
+            return False
+        
+        # Dosya izinlerini düzelt
         try:
-            if worker_id in self.active_connections:
-                vpn_config = self.active_connections[worker_id]
-                cmd = ["wg-quick", "down", vpn_config]
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            os.chmod(config_path, 0o600)
+        except Exception as e:
+            logger.warning(f"Dosya izinleri düzeltilemedi: {e}")
+        
+        try:
+            # Önce sudo olmadan dene
+            result = subprocess.run(
+                ["wg-quick", "up", config_path],
+                capture_output=True,
+                text=True,
+                timeout=VPN_CONNECTION_TIMEOUT
+            )
+            
+            if result.returncode == 0:
+                logger.info(f"VPN bağlantısı başarılı: {vpn_config}")
+                return True
+            else:
+                # Sudo ile dene
+                result = subprocess.run(
+                    ["sudo", "wg-quick", "up", config_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=VPN_CONNECTION_TIMEOUT
+                )
                 
                 if result.returncode == 0:
-                    logger.info(f"Worker {worker_id} VPN bağlantısı kesildi")
-                    del self.active_connections[worker_id]
+                    logger.info(f"VPN bağlantısı başarılı (sudo ile): {vpn_config}")
                     return True
                 else:
-                    logger.warning(f"Worker {worker_id} VPN kesme hatası: {result.stderr}")
+                    logger.warning(f"VPN bağlantı hatası: {vpn_config}")
+                    logger.warning(f"Hata: {result.stderr}")
+                    return False
                     
+        except subprocess.TimeoutExpired:
+            logger.error(f"VPN bağlantı timeout: {vpn_config}")
+            return False
         except Exception as e:
-            logger.warning(f"Worker {worker_id} VPN kesme hatası: {e}")
+            logger.error(f"VPN bağlantı hatası: {e}")
+            return False
+    
+    async def _disconnect_vpn(self, vpn_config: str) -> bool:
+        """VPN bağlantısını kes"""
+        config_path = os.path.join(VPN_CONFIG_DIR, vpn_config)
+        
+        try:
+            # Önce wg-quick down ile dene
+            result = subprocess.run(
+                ["wg-quick", "down", config_path],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
             
-        return True  # Her durumda True döndür
+            if result.returncode != 0:
+                # Sudo ile dene
+                result = subprocess.run(
+                    ["sudo", "wg-quick", "down", config_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+            
+            # Interface adını çıkar (uzantısız)
+            interface_name = vpn_config.replace('.conf', '')
+            
+            # Manuel olarak interface'i sil
+            try:
+                subprocess.run(
+                    ["sudo", "ip", "link", "delete", "dev", interface_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+            except:
+                pass  # Interface zaten silinmiş olabilir
+                
+            logger.info(f"VPN bağlantısı kesildi: {vpn_config}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"VPN kesme hatası: {e}")
+            return True  # Hata olsa bile True döndür (devam et)
     
-    def get_available_vpn_count(self) -> int:
-        """Kullanılabilir VPN sayısını döndür"""
-        return len(self.vpn_configs)
+    async def disconnect_current_vpn(self) -> bool:
+        """Mevcut VPN bağlantısını kes"""
+        if self.current_vpn:
+            success = await self._disconnect_vpn(self.current_vpn)
+            self.current_vpn = None
+            return success
+        return True
     
-    def cleanup(self):
+    async def cleanup(self):
         """Tüm VPN bağlantılarını temizle"""
-        for worker_id in list(self.active_connections.keys()):
-            asyncio.create_task(self.disconnect_vpn(worker_id)) 
+        await self.disconnect_current_vpn()
+        logger.info("VPN Manager temizlendi") 

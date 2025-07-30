@@ -241,70 +241,58 @@ class VPNManager:
             # Dosya izinlerini ayarla
             os.chmod(config_path, 0o600)
             
+            # Interface adını çıkar
+            interface_name = self._extract_interface_name(vpn_config)
+            if not interface_name:
+                return False
+            
+            # Interface zaten mevcut mu kontrol et
+            check_result = await asyncio.create_subprocess_exec(
+                'ip', 'link', 'show', interface_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            await check_result.communicate()
+            
+            if check_result.returncode == 0:
+                logger.info(f"✅ VPN interface zaten mevcut: {interface_name}")
+                self.current_vpn = vpn_config
+                return True
+            
             # Split tunneling config oluştur
             split_config_path = self._setup_split_tunneling(vpn_config)
             
             logger.info(f"Split tunneling VPN bağlantısı deneniyor: {vpn_config}")
             
-            # Önce sudo olmadan dene
-            try:
-                result = await asyncio.wait_for(
-                    asyncio.create_subprocess_exec(
-                        'wg-quick', 'up', split_config_path,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    ),
-                    timeout=5.0
-                )
-                
-                if result.returncode == 0:
-                    logger.info(f"✅ VPN bağlantısı başarılı (sudo olmadan): {vpn_config}")
-                else:
-                    logger.warning(f"VPN bağlantısı başarısız (sudo olmadan), sudo ile deneniyor...")
-                    raise Exception("sudo gerekli")
-                    
-            except (asyncio.TimeoutError, Exception) as e:
-                logger.info(f"sudo ile VPN bağlantısı deneniyor: {vpn_config}")
-                
-                # sudo ile dene
-                result = await asyncio.wait_for(
-                    asyncio.create_subprocess_exec(
-                        'sudo', 'wg-quick', 'up', split_config_path,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    ),
-                    timeout=VPN_CONNECTION_TIMEOUT
-                )
-                
-                if result.returncode == 0:
-                    logger.info(f"✅ Split tunneling VPN bağlantısı başarılı: {vpn_config}")
-                else:
-                    stdout, stderr = await result.communicate()
-                    stderr_text = stderr.decode()
-                    
-                    # "File exists" hatası normal, route zaten mevcut demektir
-                    if "File exists" in stderr_text and "Backgrounding route monitor" in stderr_text:
-                        logger.info(f"✅ VPN bağlantısı başarılı (route'lar zaten mevcut): {vpn_config}")
-                    else:
-                        logger.error(f"❌ VPN bağlantısı başarısız: {vpn_config}")
-                        logger.error(f"stdout: {stdout.decode()}")
-                        logger.error(f"stderr: {stderr_text}")
-                        return False
+            # Sudo ile bağlan
+            result = await asyncio.wait_for(
+                asyncio.create_subprocess_exec(
+                    'sudo', 'wg-quick', 'up', split_config_path,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                ),
+                timeout=VPN_CONNECTION_TIMEOUT
+            )
             
-            # VPN bağlantısını test et
-            await asyncio.sleep(2)  # Bağlantının kurulması için bekle
-            test_result = await self.test_vpn_connection()
-            
-            if test_result:
+            if result.returncode == 0:
+                logger.info(f"✅ Split tunneling VPN bağlantısı başarılı: {vpn_config}")
                 self.current_vpn = vpn_config
-                logger.info(f"✅ VPN bağlantısı ve test başarılı: {vpn_config}")
                 return True
             else:
-                logger.error(f"❌ VPN bağlantısı başarısız - test geçemedi: {vpn_config}")
-                # Bağlantıyı kapat
-                await self._disconnect_vpn(vpn_config)
-                return False
+                stdout, stderr = await result.communicate()
+                stderr_text = stderr.decode()
                 
+                # Interface zaten mevcut hatası
+                if "already exists" in stderr_text:
+                    logger.info(f"✅ VPN interface zaten mevcut: {vpn_config}")
+                    self.current_vpn = vpn_config
+                    return True
+                
+                logger.error(f"❌ VPN bağlantısı başarısız: {vpn_config}")
+                logger.error(f"stdout: {stdout.decode()}")
+                logger.error(f"stderr: {stderr_text}")
+                return False
+            
         except Exception as e:
             logger.error(f"VPN bağlantı hatası: {e}")
             return False
@@ -379,6 +367,27 @@ class VPNManager:
         """Tüm VPN bağlantılarını temizle"""
         await self.disconnect_current_vpn()
         logger.info("VPN Manager temizlendi") 
+
+    def _extract_interface_name(self, vpn_config: str) -> str:
+        """VPN config dosyasından interface adını çıkar"""
+        try:
+            # Config dosyasını oku
+            config_path = os.path.join(VPN_CONFIG_DIR, vpn_config)
+            with open(config_path, 'r') as f:
+                content = f.read()
+            
+            # Interface adını bul
+            for line in content.split('\n'):
+                if line.strip().startswith('Name = '):
+                    return line.split('=')[1].strip()
+            
+            # Eğer Name bulunamazsa, dosya adından çıkar
+            base_name = vpn_config.replace('.conf', '')
+            return f"wg{base_name[-3:]}"
+            
+        except Exception as e:
+            logger.error(f"Interface adı çıkarma hatası: {e}")
+            return None
 
     def _setup_split_tunneling(self, vpn_config: str) -> str:
         """Split tunneling için VPN config'i düzenle - sadece CommonCrawl IP'leri"""

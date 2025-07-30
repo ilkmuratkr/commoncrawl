@@ -13,6 +13,9 @@ from config.settings import (
     ROBOTSTXT_PATHS_FILE, WORDPRESS_DOMAINS_FILE
 )
 
+# Global semaphore - tüm worker'lar için maksimum eşzamanlı bağlantı
+GLOBAL_SEMAPHORE = asyncio.Semaphore(15)  # Optimize edilmiş eşzamanlı bağlantı
+
 logger = logging.getLogger(__name__)
 
 class RobotsCrawler:
@@ -42,39 +45,43 @@ class RobotsCrawler:
         """Bir chunk'ı işle ve WordPress domain'lerini bul"""
         domains_found = []
         
-        async with FileDownloader() as downloader:
-            # Batch'ler halinde işle
-            for i in range(0, len(chunk), BATCH_SIZE):
-                batch = chunk[i:i + BATCH_SIZE]
-                
-                logger.info(f"Worker {worker_id}: Batch {i//BATCH_SIZE + 1} işleniyor ({len(batch)} dosya)")
-                
-                # Dosyaları indir
-                results = await downloader.download_batch(batch)
-                
-                # Her dosyayı işle
-                for path, content in results:
-                    if content:
-                        # WordPress domain'lerini bul
-                        domains = self.detector.process_robots_file(path, content)
-                        domains_found.extend(domains)
-                        
-                        # İstatistikleri güncelle
-                        self.total_domains_found += len(domains)
-                        
-                        if domains:
-                            logger.info(f"Worker {worker_id}: {len(domains)} domain bulundu")
+        async with GLOBAL_SEMAPHORE:  # Global semaphore kullan
+            async with FileDownloader() as downloader:
+                # Batch'ler halinde işle
+                for i in range(0, len(chunk), BATCH_SIZE):
+                    batch = chunk[i:i + BATCH_SIZE]
                     
-                    # Her dosya işlendikten sonra content'i temizle
-                    del content
-                
-                # Belleği temizle
-                del results
-                
-                # Garbage collection'ı zorla
-                import gc
-                gc.collect()
-                
+                    logger.info(f"Worker {worker_id}: Batch {i//BATCH_SIZE + 1} işleniyor ({len(batch)} dosya)")
+                    
+                    # Dosyaları indir
+                    results = await downloader.download_batch(batch)
+                    
+                    # Her dosyayı işle
+                    for path, content in results:
+                        if content:
+                            # WordPress domain'lerini bul
+                            domains = self.detector.process_robots_file(path, content)
+                            domains_found.extend(domains)
+                            
+                            # İstatistikleri güncelle
+                            self.total_domains_found += len(domains)
+                            
+                            if domains:
+                                logger.info(f"Worker {worker_id}: {len(domains)} domain bulundu")
+                        
+                        # Her dosya işlendikten sonra content'i temizle
+                        del content
+                    
+                    # Belleği temizle
+                    del results
+                    
+                    # Garbage collection'ı zorla
+                    import gc
+                    gc.collect()
+                    
+                    # Worker'lar arası daha uzun bekleme
+                    await asyncio.sleep(0.5)
+                    
         return domains_found
     
     async def run_parallel_processing(self, paths: List[str]) -> List[str]:

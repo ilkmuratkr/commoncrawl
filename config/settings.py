@@ -11,13 +11,13 @@ PROCESSED_DIR = DATA_DIR / "processed"
 RESULTS_DIR = DATA_DIR / "results"
 
 # Dosya yolları
-ROBOTSTXT_PATHS_FILE = PROJECT_ROOT / "robotstxt.paths (1)"
+ROBOTSTXT_PATHS_FILE = PROJECT_ROOT / "robotstxt.paths (1)"  # Tam ölçekli çalışma
 WORDPRESS_DOMAINS_FILE = RESULTS_DIR / "wordpress_domains.txt"
 
 # Worker ayarları
-MAX_WORKERS = 10
-CHUNK_SIZE = 1000  # Her worker'ın işleyeceği path sayısı
-BATCH_SIZE = 100   # Her seferde indirilecek dosya sayısı
+MAX_WORKERS = 5  # Optimize edilmiş worker sayısı
+CHUNK_SIZE = 200  # Her worker'ın işleyeceği path sayısı
+BATCH_SIZE = 20  # Her seferde indirilecek dosya sayısı
 
 # HTTP ayarları
 REQUEST_TIMEOUT = 30

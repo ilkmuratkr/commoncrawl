@@ -19,7 +19,18 @@ class FileDownloader:
         
     async def __aenter__(self):
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        self.session = aiohttp.ClientSession(timeout=timeout)
+        connector = aiohttp.TCPConnector(
+            limit=20,  # Maksimum bağlantı sayısı (azaltıldı)
+            limit_per_host=5,  # Host başına maksimum bağlantı (azaltıldı)
+            ttl_dns_cache=300,  # DNS cache süresi
+            use_dns_cache=True,
+            enable_cleanup_closed=True,
+            force_close=True  # Bağlantıları zorla kapat
+        )
+        self.session = aiohttp.ClientSession(
+            timeout=timeout,
+            connector=connector
+        )
         return self
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -46,17 +57,30 @@ class FileDownloader:
                         logger.warning(f"HTTP {response.status} for {url}")
                         
             except Exception as e:
-                logger.warning(f"İndirme hatası {url} (attempt {attempt + 1}): {e}")
-                if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(RETRY_DELAY)
+                error_msg = str(e)
+                if "Too many open files" in error_msg:
+                    logger.error(f"Too many open files hatası - sistem limiti aşıldı: {url}")
+                    # Daha uzun bekleme süresi
+                    await asyncio.sleep(RETRY_DELAY * 2)
+                else:
+                    logger.warning(f"İndirme hatası {url} (attempt {attempt + 1}): {e}")
+                    if attempt < MAX_RETRIES - 1:
+                        await asyncio.sleep(RETRY_DELAY)
                     
         return None
     
     async def download_batch(self, paths: List[str]) -> List[Tuple[str, Optional[str]]]:
         """Birden fazla dosyayı paralel indir"""
+        # Semaphore ile eşzamanlı bağlantı sayısını sınırla
+        semaphore = asyncio.Semaphore(5)  # Maksimum 5 eşzamanlı bağlantı
+        
+        async def download_with_semaphore(path: str):
+            async with semaphore:
+                return await self.download_gzip_file(path)
+        
         tasks = []
         for path in paths:
-            task = asyncio.create_task(self.download_gzip_file(path))
+            task = asyncio.create_task(download_with_semaphore(path))
             tasks.append((path, task))
         
         results = []
